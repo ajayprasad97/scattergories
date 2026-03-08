@@ -15,23 +15,139 @@ app.use(express.json());
 
 // ─── Game Data ───────────────────────────────────────────────────────────────
 
-const CATEGORIES = [
+const CATEGORIES_POOL = [
+  // People & Names
   "A boy's name",
   "A girl's name",
+  "A famous person's last name",
+  "A US president's last name",
+  "A celebrity first name",
+  "A fictional character",
+  "A superhero",
+  "A Disney character",
+  "A cartoon character",
+  "A video game character",
+
+  // Places
   "A city",
   "A country",
+  "A US state",
+  "A capital city",
+  "A tourist destination",
+  "Something you find at the beach",
+  "Something you find in a forest",
+  "Something you find in a city",
+  "A landmark or monument",
+  "A type of store or shop",
+
+  // Animals & Nature
   "An animal",
+  "A farm animal",
+  "A wild animal",
+  "A sea creature",
+  "A bird",
+  "An insect",
+  "A type of dog breed",
+  "A flower",
+  "A tree",
+  "A fruit",
+  "A vegetable",
+  "Something in the sky",
+  "A natural disaster",
+
+  // Food & Drink
   "A food or drink",
-  "Something in a kitchen",
+  "A breakfast food",
+  "A snack food",
+  "A dessert",
+  "A type of cuisine",
+  "Something you put on a sandwich",
+  "A fast food item",
+  "A pizza topping",
+  "A type of candy",
+  "Something you drink",
+  "A cocktail or mocktail",
+
+  // Entertainment & Media
   "A movie title",
   "A TV show",
-  "A sport or hobby",
-  "Something you find at the beach",
+  "A Netflix series",
+  "A type of movie genre",
+  "A song title",
+  "A band or music artist",
+  "A video game",
+  "A board game",
+  "A podcast",
+  "A book title",
+  "A children's book",
+  "A magazine",
+
+  // Sports & Activities
+  "A sport",
+  "A hobby",
+  "An Olympic sport",
+  "Something you do at a gym",
+  "A card game",
+  "An outdoor activity",
+  "A dance style",
+  "A martial art",
+  "A water sport",
+  "A team sport",
+
+  // Everyday Life & Objects
+  "Something in a kitchen",
+  "Something in a bedroom",
+  "Something in a bathroom",
+  "Something in a school",
+  "Something in an office",
   "A type of clothing",
-  "A famous person's last name",
+  "A piece of jewellery",
+  "A household appliance",
+  "Something you carry in a bag",
+  "A tool",
+  "A type of vehicle",
+  "Something with wheels",
+  "A mode of transport",
+  "Something electronic",
+  "A type of furniture",
+
+  // Science & Knowledge
   "A musical instrument",
-  "Something that makes you happy"
+  "A school subject",
+  "A science term",
+  "A planet or space object",
+  "A type of weather",
+  "A body part",
+  "A job or profession",
+  "Something in a hospital",
+  "A type of doctor or specialist",
+  "A language",
+  "A unit of measurement",
+
+  // Fun & Miscellaneous
+  "Something that makes you happy",
+  "Something that is yellow",
+  "Something that is cold",
+  "Something that is loud",
+  "Something you find at a party",
+  "Something you do on a weekend",
+  "Something you give as a gift",
+  "Something that comes in pairs",
+  "Something with a smell",
+  "Something in a museum",
+  "Something scary",
+  "Something you collect",
+  "A reason to celebrate",
+  "Something that needs batteries",
+  "A holiday or festival",
+  "A type of hat",
+  "A type of bag",
+  "A type of shoe",
+  "Something in a garden",
+  "A phrase or expression",
 ];
+
+const CATEGORIES_PER_ROUND = 15;
 
 const LETTERS = "ABCDEFGHIJKLMNOPRSTW".split("");
 
@@ -198,7 +314,7 @@ io.on("connection", (socket) => {
       },
       phase: "lobby",
       letter: null,
-      categories: CATEGORIES,
+      categories: [],
       timerInterval: null,
       timeLeft: GAME_DURATION,
       votes: {},
@@ -237,6 +353,9 @@ io.on("connection", (socket) => {
     room.phase = "playing";
     room.votes = {};
     room.flagged = {};
+    // Pick a fresh random set of categories each round
+    const shuffled = [...CATEGORIES_POOL].sort(() => Math.random() - 0.5);
+    room.categories = shuffled.slice(0, CATEGORIES_PER_ROUND);
     Object.values(room.players).forEach(p => { p.answers = {}; });
 
     io.to(code).emit("game_started", {
