@@ -248,8 +248,8 @@ io.on("connection", (socket) => {
     cb && cb({ success: true });
   });
 
-  // ── Submit answers ──
-  socket.on("submit_answers", ({ answers }, cb) => {
+  // ── Save answers (autosave every few seconds + final submit) ──
+  socket.on("save_answers", ({ answers }, cb) => {
     const code = socket.data.gameCode;
     const room = rooms[code];
     if (!room || room.phase !== "playing") return cb && cb({ success: false });

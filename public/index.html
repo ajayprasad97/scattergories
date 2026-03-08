@@ -403,9 +403,12 @@
 
   <div class="categories-form" id="categories-form"></div>
 
-  <button class="btn btn-primary" id="submit-btn" onclick="submitAnswers()" style="min-width:200px;">
-    Submit Answers
-  </button>
+  <div style="display:flex; flex-direction:column; align-items:center; gap:8px;">
+    <button class="btn btn-primary" id="submit-btn" onclick="submitAnswers()" style="min-width:200px;">
+      Submit Answers
+    </button>
+    <span id="autosave-indicator" style="font-size:0.78rem; color:var(--muted);">Autosaving…</span>
+  </div>
 </div>
 
 <!-- ───────────────────────── SCREEN: REVIEW ───────────────────────── -->
@@ -512,15 +515,25 @@
     });
   }
 
-  function submitAnswers() {
-    if (submitted) return;
+  function getAnswers() {
     const inputs = document.querySelectorAll(".cat-input");
     const answers = {};
     inputs.forEach((inp, i) => { answers[i] = inp.value.trim(); });
+    return answers;
+  }
+
+  function saveAnswers() {
+    if (submitted) return;
+    socket.emit("save_answers", { answers: getAnswers() }, () => {});
+  }
+
+  function submitAnswers() {
+    if (submitted) return;
     submitted = true;
+    saveAnswers(); // final save
     document.getElementById("submit-btn").disabled = true;
     document.getElementById("submit-btn").innerHTML = '<span class="submitted-badge">✓ Submitted</span>';
-    socket.emit("submit_answers", { answers }, () => {});
+    document.getElementById("autosave-indicator").textContent = "✓ Saved";
   }
 
   function finaliseScores() {
@@ -558,6 +571,25 @@
         <input class="cat-input" type="text" placeholder="${letter}…" maxlength="40" data-index="${i}" />
       </div>
     `).join("");
+
+    // Autosave: debounce on every keystroke
+    let debounceTimer;
+    form.querySelectorAll(".cat-input").forEach(inp => {
+      inp.addEventListener("input", () => {
+        document.getElementById("autosave-indicator").textContent = "Saving…";
+        clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(() => {
+          saveAnswers();
+          document.getElementById("autosave-indicator").textContent = "✓ Saved";
+        }, 800);
+      });
+    });
+
+    // Autosave every 5 seconds as a safety net
+    if (window._autosaveInterval) clearInterval(window._autosaveInterval);
+    window._autosaveInterval = setInterval(() => {
+      if (!submitted) saveAnswers();
+    }, 5000);
   }
 
   function renderAnswersGrid(grid) {
@@ -641,6 +673,7 @@
 
   socket.on("phase_change", ({ phase, scoreboard }) => {
     if (phase === "review") {
+      if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       showScreen("review");
       document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
     }
