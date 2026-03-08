@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Scattergories</title>
+  <link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script src="/socket.io/socket.io.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131e;
+      --surface2: #1c1c2e;
+      --border: #2a2a45;
+      --accent: #f0c040;
+      --accent2: #e05555;
+      --accent3: #50c878;
+      --text: #eeeef5;
+      --muted: #7070a0;
+      --radius: 12px;
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 16px;
+      line-height: 1.5;
+    }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    /* ── Noise texture overlay ── */
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.04'/%3E%3C/svg%3E");
+      pointer-events: none; z-index: 1000;
+      opacity: 0.4;
+    }
+
+    /* ── Typography ── */
+    h1, h2, h3, .display { font-family: 'Bebas Neue', sans-serif; letter-spacing: 0.04em; }
+
+    /* ── Screens ── */
+    .screen {
+      display: none;
+      width: 100%;
+      max-width: 860px;
+      padding: 32px 24px;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      animation: fadeUp 0.35s ease both;
+    }
+    .screen.active { display: flex; }
+
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(18px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* ── Logo ── */
+    .logo {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(3rem, 10vw, 6rem);
+      color: var(--accent);
+      letter-spacing: 0.06em;
+      text-shadow: 4px 4px 0 rgba(240,192,64,0.18);
+      line-height: 1;
+    }
+    .logo span { color: var(--text); }
+
+    .tagline { color: var(--muted); font-size: 0.95rem; text-align: center; }
+
+    /* ── Cards ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 28px;
+      width: 100%;
+    }
+
+    .card-title {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.4rem;
+      letter-spacing: 0.06em;
+      color: var(--accent);
+      margin-bottom: 16px;
+    }
+
+    /* ── Inputs ── */
+    input[type="text"] {
+      width: 100%;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px 16px;
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      font-size: 1rem;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    input[type="text"]:focus { border-color: var(--accent); }
+    input[type="text"]::placeholder { color: var(--muted); }
+
+    .field { display: flex; flex-direction: column; gap: 8px; width: 100%; }
+    .field label { font-size: 0.85rem; color: var(--muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.08em; }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 13px 28px;
+      border: none; border-radius: 8px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.15rem; letter-spacing: 0.08em;
+      cursor: pointer;
+      transition: transform 0.15s, box-shadow 0.15s, opacity 0.15s;
+    }
+    .btn:active { transform: scale(0.97); }
+    .btn-primary {
+      background: var(--accent); color: #0a0a0f;
+      box-shadow: 0 4px 20px rgba(240,192,64,0.25);
+    }
+    .btn-primary:hover { box-shadow: 0 6px 28px rgba(240,192,64,0.4); transform: translateY(-1px); }
+    .btn-secondary {
+      background: var(--surface2); color: var(--text);
+      border: 1px solid var(--border);
+    }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-danger { background: var(--accent2); color: #fff; }
+    .btn-success { background: var(--accent3); color: #0a0a0f; }
+    .btn-full { width: 100%; }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; pointer-events: none; }
+
+    /* ── Tabs (Join / Host) ── */
+    .tabs { display: flex; gap: 2px; background: var(--surface2); padding: 4px; border-radius: 10px; width: 100%; }
+    .tab {
+      flex: 1; padding: 10px; border: none; border-radius: 8px;
+      background: transparent; color: var(--muted);
+      font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 0.06em;
+      cursor: pointer; transition: all 0.2s;
+    }
+    .tab.active { background: var(--accent); color: #0a0a0f; }
+
+    /* ── Toast ── */
+    #toast {
+      position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px);
+      background: var(--accent2); color: #fff;
+      padding: 12px 24px; border-radius: 8px;
+      font-weight: 600; font-size: 0.9rem;
+      transition: transform 0.3s, opacity 0.3s;
+      opacity: 0; z-index: 9999; white-space: nowrap;
+    }
+    #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
+
+    /* ── Lobby ── */
+    .game-code-display {
+      text-align: center; padding: 24px;
+      background: var(--surface2); border-radius: var(--radius);
+      border: 1px dashed var(--border);
+    }
+    .game-code-display .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
+    .game-code-display .code {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 3.5rem; letter-spacing: 0.15em; color: var(--accent);
+      line-height: 1.1;
+    }
+
+    .player-list { display: flex; flex-wrap: wrap; gap: 10px; }
+    .player-chip {
+      display: flex; align-items: center; gap: 8px;
+      padding: 8px 14px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 999px;
+      font-size: 0.9rem; font-weight: 500;
+    }
+    .player-chip .dot {
+      width: 8px; height: 8px; border-radius: 50%; background: var(--accent3);
+    }
+    .player-chip.host .dot { background: var(--accent); }
+
+    /* ── Playing phase ── */
+    .letter-display {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: clamp(5rem, 20vw, 10rem);
+      color: var(--accent);
+      line-height: 1;
+      text-shadow: 0 0 60px rgba(240,192,64,0.3);
+      animation: letterPop 0.5s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    }
+    @keyframes letterPop {
+      from { transform: scale(0.4) rotate(-8deg); opacity: 0; }
+      to   { transform: scale(1) rotate(0deg); opacity: 1; }
+    }
+
+    .timer {
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 2.5rem; letter-spacing: 0.1em;
+      color: var(--text);
+      background: var(--surface2);
+      border: 2px solid var(--border);
+      border-radius: 999px;
+      padding: 6px 28px;
+      transition: color 0.3s, border-color 0.3s;
+    }
+    .timer.urgent { color: var(--accent2); border-color: var(--accent2); animation: pulse 0.5s ease infinite alternate; }
+    @keyframes pulse { from { opacity: 1; } to { opacity: 0.6; } }
+
+    /* ── Answer grid ── */
+    .answers-grid { width: 100%; display: flex; flex-direction: column; gap: 0; }
+
+    .category-block {
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      margin-bottom: 10px;
+      overflow: hidden;
+    }
+    .category-header {
+      background: var(--surface2);
+      padding: 10px 16px;
+      font-family: 'Bebas Neue', sans-serif;
+      font-size: 1.05rem; letter-spacing: 0.06em;
+      color: var(--accent);
+    }
+
+    .answer-row {
+      display: flex; align-items: center; gap: 12px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--border);
+      transition: background 0.2s;
+    }
+    .answer-row:hover { background: var(--surface2); }
+    .answer-row.flagged { opacity: 0.55; }
+    .answer-row.flagged .answer-text { text-decoration: line-through; color: var(--accent2); }
+
+    .player-name-col { min-width: 100px; font-size: 0.82rem; color: var(--muted); font-weight: 500; }
+    .answer-text { flex: 1; font-weight: 500; }
+    .flag-badge {
+      font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.06em;
+    }
+    .flag-badge.dup { background: rgba(224,85,85,0.15); color: var(--accent2); border: 1px solid rgba(224,85,85,0.3); }
+    .flag-badge.empty { background: rgba(112,112,160,0.15); color: var(--muted); border: 1px solid rgba(112,112,160,0.3); }
+
+    .vote-btns { display: flex; gap: 6px; }
+    .vote-btn {
+      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: var(--surface2); color: var(--text);
+      font-size: 0.82rem; cursor: pointer; transition: all 0.15s;
+      font-family: 'DM Sans', sans-serif;
+    }
+    .vote-btn:hover { border-color: var(--accent); }
+    .vote-btn.active-yes { background: rgba(80,200,120,0.15); border-color: var(--accent3); color: var(--accent3); }
+    .vote-btn.active-no  { background: rgba(224,85,85,0.15); border-color: var(--accent2); color: var(--accent2); }
+    .vote-count { font-size: 0.75rem; color: var(--muted); min-width: 50px; text-align: right; }
+
+    /* ── Playing answer inputs ── */
+    .categories-form { width: 100%; display: flex; flex-direction: column; gap: 10px; }
+    .category-input-row {
+      display: flex; align-items: center; gap: 12px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 16px;
+      transition: border-color 0.2s;
+    }
+    .category-input-row:focus-within { border-color: var(--accent); }
+    .cat-label {
+      min-width: 180px; font-size: 0.85rem; color: var(--muted); font-weight: 500;
+    }
+    .cat-input {
+      flex: 1; background: transparent; border: none;
+      color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 1rem;
+      outline: none;
+    }
+    .cat-input::placeholder { color: var(--muted); }
+
+    /* ── Scoreboard ── */
+    .scoreboard { width: 100%; display: flex; flex-direction: column; gap: 8px; }
+    .score-row {
+      display: flex; align-items: center; gap: 16px;
+      padding: 16px 20px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      animation: fadeUp 0.4s ease both;
+    }
+    .score-row:nth-child(1) { border-color: var(--accent); }
+    .rank {
+      font-family: 'Bebas Neue', sans-serif; font-size: 2rem;
+      color: var(--muted); min-width: 40px;
+    }
+    .score-row:nth-child(1) .rank { color: var(--accent); }
+    .score-name { flex: 1; font-size: 1.1rem; font-weight: 600; }
+    .score-pts {
+      font-family: 'Bebas Neue', sans-serif; font-size: 2rem; color: var(--accent);
+    }
+
+    /* ── Phase banner ── */
+    .phase-banner {
+      width: 100%;
+      padding: 14px 20px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      display: flex; align-items: center; justify-content: space-between; gap: 12px;
+      flex-wrap: wrap;
+    }
+    .phase-title { font-family: 'Bebas Neue', sans-serif; font-size: 1.3rem; letter-spacing: 0.06em; color: var(--accent); }
+
+    /* ── Submitted indicator ── */
+    .submitted-badge {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: rgba(80,200,120,0.15); border: 1px solid var(--accent3);
+      color: var(--accent3); border-radius: 999px;
+      padding: 6px 16px; font-size: 0.9rem; font-weight: 600;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .cat-label { min-width: 120px; font-size: 0.75rem; }
+      .player-name-col { min-width: 70px; }
+      .vote-btns { flex-direction: column; }
+    }
+  </style>
+</head>
+<body>
+
+<!-- ───────────────────────── SCREEN: HOME ───────────────────────── -->
+<div class="screen active" id="screen-home">
+  <div class="logo">Scatter<span>gories</span></div>
+  <p class="tagline">Race the clock. Think fast. No duplicates.</p>
+
+  <div class="card" style="max-width:440px;">
+    <div class="tabs">
+      <button class="tab active" onclick="switchTab('join')">Join Game</button>
+      <button class="tab" onclick="switchTab('host')">Host Game</button>
+    </div>
+
+    <div id="tab-join" style="margin-top:20px; display:flex; flex-direction:column; gap:14px;">
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="join-name" placeholder="e.g. Alex" maxlength="20" />
+      </div>
+      <div class="field">
+        <label>Game Code</label>
+        <input type="text" id="join-code" placeholder="e.g. ABC12" maxlength="8" style="text-transform:uppercase;" />
+      </div>
+      <button class="btn btn-primary btn-full" onclick="joinGame()">Join →</button>
+    </div>
+
+    <div id="tab-host" style="margin-top:20px; display:flex; flex-direction:column; gap:14px; display:none;">
+      <div class="field">
+        <label>Your Name</label>
+        <input type="text" id="host-name" placeholder="e.g. Sam" maxlength="20" />
+      </div>
+      <button class="btn btn-primary btn-full" onclick="createGame()">Create Game →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────────────── SCREEN: LOBBY ───────────────────────── -->
+<div class="screen" id="screen-lobby">
+  <div class="logo" style="font-size:3rem;">Waiting Room</div>
+
+  <div class="game-code-display" style="width:100%;max-width:440px;">
+    <div class="label">Share this code with friends</div>
+    <div class="code" id="lobby-code">—</div>
+  </div>
+
+  <div class="card" style="max-width:440px;">
+    <div class="card-title">Players (<span id="player-count">0</span>)</div>
+    <div class="player-list" id="player-list"></div>
+  </div>
+
+  <div id="host-start-btn" style="display:none; width:100%; max-width:440px;">
+    <button class="btn btn-primary btn-full" onclick="startGame()">Start Game ▶</button>
+    <p style="text-align:center; color:var(--muted); font-size:0.82rem; margin-top:8px;">Only you (the host) can start</p>
+  </div>
+  <div id="waiting-msg" style="color:var(--muted); display:none;">Waiting for host to start…</div>
+</div>
+
+<!-- ───────────────────────── SCREEN: PLAYING ───────────────────────── -->
+<div class="screen" id="screen-playing">
+  <div style="display:flex; align-items:center; justify-content:space-between; width:100%; flex-wrap:wrap; gap:12px;">
+    <div>
+      <div style="font-size:0.8rem; color:var(--muted); text-transform:uppercase; letter-spacing:0.1em;">Letter</div>
+      <div class="letter-display" id="play-letter">A</div>
+    </div>
+    <div class="timer" id="timer-display">2:00</div>
+  </div>
+
+  <div class="categories-form" id="categories-form"></div>
+
+  <button class="btn btn-primary" id="submit-btn" onclick="submitAnswers()" style="min-width:200px;">
+    Submit Answers
+  </button>
+</div>
+
+<!-- ───────────────────────── SCREEN: REVIEW ───────────────────────── -->
+<div class="screen" id="screen-review">
+  <div class="phase-banner">
+    <div>
+      <div class="phase-title">Review Round</div>
+      <div style="font-size:0.82rem; color:var(--muted);">Red = duplicate/invalid. Vote to challenge any answer.</div>
+    </div>
+    <div id="review-host-btn" style="display:none;">
+      <button class="btn btn-success" onclick="finaliseScores()">Finalise Scores →</button>
+    </div>
+  </div>
+
+  <div class="answers-grid" id="answers-grid"></div>
+</div>
+
+<!-- ───────────────────────── SCREEN: SCORES ───────────────────────── -->
+<div class="screen" id="screen-scores">
+  <div class="logo" style="font-size:3.5rem; text-align:center;">Scores</div>
+  <div class="scoreboard" id="scoreboard"></div>
+
+  <div id="scores-host-btn" style="display:none;">
+    <button class="btn btn-primary" onclick="playAgain()">Play Again ↺</button>
+  </div>
+</div>
+
+<!-- ── Toast ── -->
+<div id="toast"></div>
+
+<script>
+  // ─── State ──────────────────────────────────────────────────────────────────
+  const socket = io();
+  let myName = "";
+  let isHost = false;
+  let gameCode = "";
+  let currentLetter = "";
+  let categories = [];
+  let submitted = false;
+
+  // ─── UI Helpers ─────────────────────────────────────────────────────────────
+  function showScreen(id) {
+    document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
+    document.getElementById("screen-" + id).classList.add("active");
+  }
+
+  function toast(msg, duration = 3500) {
+    const t = document.getElementById("toast");
+    t.textContent = msg;
+    t.classList.add("show");
+    setTimeout(() => t.classList.remove("show"), duration);
+  }
+
+  function switchTab(tab) {
+    document.querySelectorAll(".tab").forEach((t, i) => t.classList.toggle("active", (i === 0) === (tab === "join")));
+    document.getElementById("tab-join").style.display = tab === "join" ? "flex" : "none";
+    document.getElementById("tab-host").style.display = tab === "host" ? "flex" : "none";
+  }
+  // init tab-host hidden correctly
+  document.getElementById("tab-host").style.display = "none";
+
+  function fmtTime(sec) {
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return `${m}:${s.toString().padStart(2,"0")}`;
+  }
+
+  // ─── Actions ────────────────────────────────────────────────────────────────
+  function createGame() {
+    myName = document.getElementById("host-name").value.trim();
+    if (!myName) return toast("Enter your name first.");
+    socket.emit("create_game", { playerName: myName }, (res) => {
+      if (!res.success) return toast("Error creating game.");
+      isHost = true;
+      gameCode = res.code;
+      setupLobby(res.roomState);
+    });
+  }
+
+  function joinGame() {
+    myName = document.getElementById("join-name").value.trim();
+    const code = document.getElementById("join-code").value.trim().toUpperCase();
+    if (!myName) return toast("Enter your name.");
+    if (!code) return toast("Enter a game code.");
+    socket.emit("join_game", { playerName: myName, code }, (res) => {
+      if (!res.success) return toast(res.error || "Failed to join.");
+      isHost = false;
+      gameCode = res.code;
+      setupLobby(res.roomState);
+    });
+  }
+
+  function setupLobby(roomState) {
+    document.getElementById("lobby-code").textContent = roomState.code;
+    renderPlayers(roomState.players);
+    document.getElementById("host-start-btn").style.display = isHost ? "block" : "none";
+    document.getElementById("waiting-msg").style.display = isHost ? "none" : "block";
+    showScreen("lobby");
+  }
+
+  function startGame() {
+    socket.emit("start_game", {}, (res) => {
+      if (!res?.success) toast("Couldn't start game.");
+    });
+  }
+
+  function submitAnswers() {
+    if (submitted) return;
+    const inputs = document.querySelectorAll(".cat-input");
+    const answers = {};
+    inputs.forEach((inp, i) => { answers[i] = inp.value.trim(); });
+    submitted = true;
+    document.getElementById("submit-btn").disabled = true;
+    document.getElementById("submit-btn").innerHTML = '<span class="submitted-badge">✓ Submitted</span>';
+    socket.emit("submit_answers", { answers }, () => {});
+  }
+
+  function finaliseScores() {
+    socket.emit("finalise_scores", {}, () => {});
+  }
+
+  function playAgain() {
+    socket.emit("play_again", {}, () => {});
+  }
+
+  // ─── Rendering ──────────────────────────────────────────────────────────────
+  function renderPlayers(players) {
+    const list = document.getElementById("player-list");
+    document.getElementById("player-count").textContent = players.length;
+    list.innerHTML = players.map(p => `
+      <div class="player-chip ${p.isHost ? 'host' : ''}">
+        <span class="dot"></span>
+        ${escHtml(p.name)}${p.isHost ? ' 👑' : ''}
+      </div>
+    `).join("");
+  }
+
+  function renderPlayingScreen(letter, cats) {
+    currentLetter = letter;
+    categories = cats;
+    submitted = false;
+    document.getElementById("play-letter").textContent = letter;
+    document.getElementById("submit-btn").disabled = false;
+    document.getElementById("submit-btn").innerHTML = "Submit Answers";
+
+    const form = document.getElementById("categories-form");
+    form.innerHTML = cats.map((cat, i) => `
+      <div class="category-input-row">
+        <span class="cat-label">${escHtml(cat)}</span>
+        <input class="cat-input" type="text" placeholder="${letter}…" maxlength="40" data-index="${i}" />
+      </div>
+    `).join("");
+  }
+
+  function renderAnswersGrid(grid) {
+    const container = document.getElementById("answers-grid");
+    container.innerHTML = grid.map(({ category, categoryIndex, entries }) => `
+      <div class="category-block">
+        <div class="category-header">${escHtml(category)}</div>
+        ${entries.map(e => {
+          const isEmpty = !e.answer;
+          const isDup = e.flagged && !isEmpty;
+          const badgeHtml = e.flagged
+            ? `<span class="flag-badge ${isEmpty ? 'empty' : 'dup'}">${isEmpty ? 'empty' : 'duplicate'}</span>`
+            : "";
+          const voteHtml = !e.flagged && e.answer ? `
+            <div class="vote-btns">
+              <button class="vote-btn ${e.myVoteYes ? 'active-yes' : ''}"
+                onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteYes ? 'clear' : 'yes'}')">
+                ✓ ${e.voteYes}
+              </button>
+              <button class="vote-btn ${e.myVoteNo ? 'active-no' : ''}"
+                onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteNo ? 'clear' : 'no'}')">
+                ✗ ${e.voteNo}
+              </button>
+            </div>
+          ` : "";
+          return `
+            <div class="answer-row ${e.flagged ? 'flagged' : ''}">
+              <span class="player-name-col">${escHtml(e.playerName)}</span>
+              <span class="answer-text">${escHtml(e.answer || '—')}</span>
+              ${badgeHtml}
+              ${voteHtml}
+            </div>`;
+        }).join("")}
+      </div>
+    `).join("");
+  }
+
+  function renderScoreboard(scoreboard) {
+    document.getElementById("scoreboard").innerHTML = scoreboard.map((p, i) => `
+      <div class="score-row" style="animation-delay:${i * 0.08}s">
+        <span class="rank">${i + 1}</span>
+        <span class="score-name">${escHtml(p.name)}</span>
+        <span class="score-pts">${p.score} <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>
+    `).join("");
+  }
+
+  function castVote(categoryIndex, targetPlayerId, voteType) {
+    socket.emit("vote", { categoryIndex, targetPlayerId, voteType }, () => {});
+  }
+
+  function escHtml(str) {
+    return (str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ─── Socket Events ──────────────────────────────────────────────────────────
+  socket.on("room_update", (roomState) => {
+    renderPlayers(roomState.players);
+  });
+
+  socket.on("player_left", ({ playerName }) => {
+    toast(`${playerName} left the game`);
+  });
+
+  socket.on("you_are_host", () => {
+    isHost = true;
+    document.getElementById("host-start-btn").style.display = "block";
+    document.getElementById("waiting-msg").style.display = "none";
+    toast("You are now the host 👑");
+  });
+
+  socket.on("game_started", ({ letter, categories: cats, timeLeft }) => {
+    renderPlayingScreen(letter, cats);
+    showScreen("playing");
+    updateTimer(timeLeft);
+  });
+
+  socket.on("timer_tick", ({ timeLeft }) => {
+    updateTimer(timeLeft);
+  });
+
+  socket.on("phase_change", ({ phase, scoreboard }) => {
+    if (phase === "review") {
+      showScreen("review");
+      document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
+    }
+    if (phase === "scores") {
+      renderScoreboard(scoreboard);
+      document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
+      showScreen("scores");
+    }
+    if (phase === "lobby") {
+      showScreen("lobby");
+    }
+  });
+
+  socket.on("answers_grid", (grid) => {
+    renderAnswersGrid(grid);
+  });
+
+  function updateTimer(sec) {
+    const el = document.getElementById("timer-display");
+    if (el) {
+      el.textContent = fmtTime(sec);
+      el.classList.toggle("urgent", sec <= 20);
+    }
+  }
+
+  // ─── Enter key shortcuts ─────────────────────────────────────────────────────
+  document.getElementById("join-code").addEventListener("keydown", e => { if (e.key === "Enter") joinGame(); });
+  document.getElementById("join-name").addEventListener("keydown", e => { if (e.key === "Enter") joinGame(); });
+  document.getElementById("host-name").addEventListener("keydown", e => { if (e.key === "Enter") createGame(); });
+</script>
+</body>
+</html>
