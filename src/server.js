@@ -183,6 +183,7 @@ function getRoomState(room) {
     letter: room.letter,
     categories: room.categories,
     timeLeft: room.timeLeft,
+    settings: room.settings,
     players: Object.entries(room.players).map(([id, p]) => ({
       id,
       name: p.name,
@@ -277,7 +278,7 @@ function calculateScores(room) {
 }
 
 function startTimer(room) {
-  room.timeLeft = GAME_DURATION;
+  room.timeLeft = room.settings ? room.settings.gameDuration : GAME_DURATION;
   room.timerInterval = setInterval(() => {
     room.timeLeft -= 1;
     io.to(room.code).emit("timer_tick", { timeLeft: room.timeLeft });
@@ -304,8 +305,12 @@ io.on("connection", (socket) => {
   console.log(`Socket connected: ${socket.id}`);
 
   // ── Create game ──
-  socket.on("create_game", ({ playerName }, cb) => {
+  socket.on("create_game", ({ playerName, gameDuration, questionCount }, cb) => {
     const code = generateCode();
+    const settings = {
+      gameDuration: gameDuration && gameDuration >= 30 && gameDuration <= 600 ? gameDuration : GAME_DURATION,
+      questionCount: questionCount && questionCount >= 1 && questionCount <= 25 ? questionCount : CATEGORIES_PER_ROUND
+    };
     rooms[code] = {
       code,
       hostId: socket.id,
@@ -316,7 +321,8 @@ io.on("connection", (socket) => {
       letter: null,
       categories: [],
       timerInterval: null,
-      timeLeft: GAME_DURATION,
+      timeLeft: settings.gameDuration,
+      settings,
       votes: {},
       flagged: {}
     };
@@ -354,8 +360,9 @@ io.on("connection", (socket) => {
     room.votes = {};
     room.flagged = {};
     // Pick a fresh random set of categories each round
+    const count = room.settings ? room.settings.questionCount : CATEGORIES_PER_ROUND;
     const shuffled = [...CATEGORIES_POOL].sort(() => Math.random() - 0.5);
-    room.categories = shuffled.slice(0, CATEGORIES_PER_ROUND);
+    room.categories = shuffled.slice(0, count);
     Object.values(room.players).forEach(p => { p.answers = {}; });
 
     io.to(code).emit("game_started", {
@@ -443,7 +450,7 @@ io.on("connection", (socket) => {
     room.letter = null;
     room.votes = {};
     room.flagged = {};
-    room.timeLeft = GAME_DURATION;
+    room.timeLeft = room.settings ? room.settings.gameDuration : GAME_DURATION;
     Object.values(room.players).forEach(p => { p.answers = {}; p.score = 0; });
 
     io.to(code).emit("room_update", getRoomState(room));

@@ -365,6 +365,29 @@
         <label>Your Name</label>
         <input type="text" id="host-name" placeholder="e.g. Sam" maxlength="20" />
       </div>
+      <div style="display:flex; gap:12px;">
+        <div class="field" style="flex:1;">
+          <label>Timer</label>
+          <select id="host-timer" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:12px 16px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:1rem; outline:none; cursor:pointer;">
+            <option value="60">1 min</option>
+            <option value="90">1:30</option>
+            <option value="120" selected>2 min</option>
+            <option value="180">3 min</option>
+            <option value="240">4 min</option>
+            <option value="300">5 min</option>
+          </select>
+        </div>
+        <div class="field" style="flex:1;">
+          <label>Questions</label>
+          <select id="host-questions" style="width:100%; background:var(--surface2); border:1px solid var(--border); border-radius:8px; padding:12px 16px; color:var(--text); font-family:'DM Sans',sans-serif; font-size:1rem; outline:none; cursor:pointer;">
+            <option value="5">5</option>
+            <option value="10">10</option>
+            <option value="15" selected>15</option>
+            <option value="20">20</option>
+            <option value="25">25</option>
+          </select>
+        </div>
+      </div>
       <button class="btn btn-primary btn-full" onclick="createGame()">Create Game →</button>
     </div>
   </div>
@@ -480,7 +503,9 @@
   function createGame() {
     myName = document.getElementById("host-name").value.trim();
     if (!myName) return toast("Enter your name first.");
-    socket.emit("create_game", { playerName: myName }, (res) => {
+    const gameDuration = parseInt(document.getElementById("host-timer").value);
+    const questionCount = parseInt(document.getElementById("host-questions").value);
+    socket.emit("create_game", { playerName: myName, gameDuration, questionCount }, (res) => {
       if (!res.success) return toast("Error creating game.");
       isHost = true;
       gameCode = res.code;
