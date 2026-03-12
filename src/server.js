@@ -1,8 +1,10 @@
+require("dotenv").config();
 const express = require("express");
 const http = require("http");
 const { Server } = require("socket.io");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
+const { saveGameSession } = require("./db");
 
 const app = express();
 const server = http.createServer(app);
@@ -438,6 +440,9 @@ io.on("connection", (socket) => {
 
     io.to(code).emit("phase_change", { phase: "scores", scoreboard });
     cb && cb({ success: true });
+
+    // Save to Supabase asynchronously — doesn't block the game
+    saveGameSession(room);
   });
 
   // ── Play again (host only) ──
