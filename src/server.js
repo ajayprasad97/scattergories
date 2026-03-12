@@ -161,7 +161,7 @@ function startTimer(room) {
 function endRound(room) {
   room.phase = "review";
   detectDuplicates(room);
-  io.to(room.code).emit("phase_change", { phase: "review" });
+  io.to(room.code).emit("phase_change", { phase: "review", currentRound: room.currentRound, totalRounds: room.settings.totalRounds });
   Object.keys(room.players).forEach(sid => {
     io.to(sid).emit("answers_grid", getAnswersGridForPlayer(room, sid));
   });
