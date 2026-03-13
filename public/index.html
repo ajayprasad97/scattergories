@@ -359,11 +359,12 @@
         ${entries.map(e => {
           const isEmpty = !e.answer;
           const badgeHtml = e.flagged ? `<span class="flag-badge ${isEmpty ? 'empty' : 'dup'}">${isEmpty ? 'empty' : 'duplicate'}</span>` : "";
-          const voteHtml = !e.flagged && e.answer ? `
+          const isMyAnswer = e.playerId === socket.id;
+          const voteHtml = !e.flagged && e.answer && !isMyAnswer ? `
             <div class="vote-btns">
               <button class="vote-btn ${e.myVoteYes ? 'active-yes' : ''}" onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteYes ? 'clear' : 'yes'}')">✓ ${e.voteYes}</button>
               <button class="vote-btn ${e.myVoteNo  ? 'active-no'  : ''}" onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteNo  ? 'clear' : 'no'}')">✗ ${e.voteNo}</button>
-            </div>` : "";
+            </div>` : (isMyAnswer && !e.flagged && e.answer ? '<span style="font-size:0.75rem;color:var(--muted);padding:4px 8px;">your answer</span>' : "");
           return `<div class="answer-row ${e.flagged ? 'flagged' : ''}">
             <span class="player-name-col">${escHtml(e.playerName)}</span>
             <span class="answer-text">${escHtml(e.answer || '—')}</span>
@@ -418,13 +419,13 @@
     if (phase === "between_rounds") {
       document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
       document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
-      document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true);
+      document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true) + renderMyAnswers();
       document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
       document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
       showScreen("between_rounds");
     }
     if (phase === "scores") {
-      document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false);
+      document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false) + renderMyAnswers();
       document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
       showScreen("scores");
     }
@@ -436,6 +437,28 @@
   function updateTimer(sec) {
     const el = document.getElementById("timer-display");
     if (el) { el.textContent = fmtTime(sec); el.classList.toggle("urgent", sec <= 20); }
+  }
+
+  // ── My answers summary (shown on between-rounds and final scores) ──
+  let myAnswersSummary = [];
+
+  socket.on("my_answers_summary", ({ myAnswers }) => {
+    myAnswersSummary = myAnswers;
+  });
+
+  function renderMyAnswers() {
+    if (!myAnswersSummary.length) return "";
+    return `<div style="width:100%;margin-top:8px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:10px;">Your Answers This Round</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        ${myAnswersSummary.map(a => `
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid ${a.valid ? 'rgba(80,200,120,0.3)' : 'rgba(224,85,85,0.2)'};border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">${escHtml(a.category)}</span>
+            <span style="flex:1;font-weight:500;color:${a.valid ? 'var(--accent3)' : 'var(--accent2)'};">${escHtml(a.answer || '—')}</span>
+            <span style="font-size:0.75rem;color:${a.valid ? 'var(--accent3)' : 'var(--accent2)'};">${a.valid ? '✓ point' : a.answer ? '✗ no point' : '—'}</span>
+          </div>`).join("")}
+      </div>
+    </div>`;
   }
 
   // ── Enter shortcuts ──

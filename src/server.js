@@ -257,6 +257,8 @@ io.on("connection", (socket) => {
     const code = socket.data.gameCode;
     const room = rooms[code];
     if (!room || room.phase !== "review") return cb && cb({ success: false });
+    // Can't vote on your own answer
+    if (targetPlayerId === socket.id) return cb && cb({ success: false, error: "Can't vote on your own answer." });
 
     const key = `${categoryIndex}_${targetPlayerId}`;
     if (!room.votes[key]) room.votes[key] = { yes: new Set(), no: new Set() };
@@ -296,6 +298,20 @@ io.on("connection", (socket) => {
       totalRounds: room.settings.totalRounds,
       isLastRound
     });
+
+    // Send each player their own answer summary (valid ones in green, flagged in red)
+    Object.entries(room.players).forEach(([sid, player]) => {
+      const myAnswers = room.categories.map((category, ci) => {
+        const key = `${ci}_${sid}`;
+        return {
+          category,
+          answer: player.answers[ci] || "",
+          valid: !room.flagged[key] && !!(player.answers[ci] || "").trim()
+        };
+      });
+      io.to(sid).emit("my_answers_summary", { myAnswers });
+    });
+
     cb && cb({ success: true });
 
     // Save each round to Supabase
