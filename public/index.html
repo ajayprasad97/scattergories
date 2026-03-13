@@ -47,7 +47,10 @@
     .tabs { display: flex; gap: 2px; background: var(--surface2); padding: 4px; border-radius: 10px; width: 100%; }
     .tab { flex: 1; padding: 10px; border: none; border-radius: 8px; background: transparent; color: var(--muted); font-family: 'Bebas Neue', sans-serif; font-size: 1.1rem; letter-spacing: 0.06em; cursor: pointer; transition: all 0.2s; }
     .tab.active { background: var(--accent); color: #0a0a0f; }
-    #toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent2); color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: transform 0.3s, opacity 0.3s; opacity: 0; z-index: 9999; white-space: nowrap; }
+    .dot { width:10px;height:10px;border-radius:50%;background:var(--accent);opacity:0.3;animation:pulse 1.2s ease-in-out infinite; }
+.dot:nth-child(2){animation-delay:0.2s}.dot:nth-child(3){animation-delay:0.4s}
+@keyframes pulse{0%,100%{opacity:0.3;transform:scale(1)}50%{opacity:1;transform:scale(1.3)}}
+#toast { position: fixed; bottom: 32px; left: 50%; transform: translateX(-50%) translateY(80px); background: var(--accent2); color: #fff; padding: 12px 24px; border-radius: 8px; font-weight: 600; font-size: 0.9rem; transition: transform 0.3s, opacity 0.3s; opacity: 0; z-index: 9999; white-space: nowrap; }
     #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
     .game-code-display { text-align: center; padding: 24px; background: var(--surface2); border-radius: var(--radius); border: 1px dashed var(--border); }
     .game-code-display .label { font-size: 0.8rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.1em; }
@@ -200,6 +203,15 @@
 </div>
 
 <!-- ── BETWEEN ROUNDS ── -->
+<!-- ── CALCULATING SCORES ── -->
+<div class="screen" id="screen-calculating">
+  <div class="logo" style="font-size:3rem;text-align:center;" id="calculating-title">Calculating…</div>
+  <p style="color:var(--muted);text-align:center;">Tallying up scores and checking answers</p>
+  <div id="calculating-dots" style="display:flex;gap:10px;margin-top:8px;">
+    <span class="dot"></span><span class="dot"></span><span class="dot"></span>
+  </div>
+</div>
+
 <div class="screen" id="screen-between_rounds">
   <div class="logo" style="font-size:3rem;text-align:center;" id="between-title">Round 1 Done</div>
   <p style="color:var(--muted);text-align:center;" id="between-subtitle">Round scores — cumulative total on the right</p>
@@ -460,7 +472,7 @@
 
   socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
 
-  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid }) => {
+  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid, skipLoading }) => {
     if (myAnswers) myAnswersSummary = myAnswers;
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
@@ -469,18 +481,26 @@
       showScreen("review");
       if (answersGrid) renderAnswersGrid(answersGrid);
     }
-    if (phase === "between_rounds") {
-      document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
-      document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
-      document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true);
-      document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
-      document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
-      showScreen("between_rounds");
-    }
-    if (phase === "scores") {
-      document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false);
-      document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
-      showScreen("scores");
+    if (phase === "between_rounds" || phase === "scores") {
+      const roundLabel = phase === "between_rounds" ? `Round ${currentRound} Done` : "Final Scores";
+      const delay = skipLoading ? 0 : 2000;
+      document.getElementById("calculating-title").textContent = roundLabel;
+      if (!skipLoading) showScreen("calculating");
+      setTimeout(() => {
+        if (phase === "between_rounds") {
+          document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
+          document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
+          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true);
+          document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
+          document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
+          showScreen("between_rounds");
+        } else {
+          document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false);
+          document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
+          showScreen("scores");
+        }
+        requestAnimationFrame(injectMyAnswers);
+      }, delay);
     }
     if (phase === "lobby") { showScreen("lobby"); }
   });

@@ -384,7 +384,8 @@ io.on("connection", (socket) => {
         currentRound: room.currentRound,
         totalRounds: room.settings.totalRounds,
         isLastRound,
-        myAnswers  // bundled in — arrives at same time as screen change
+        myAnswers,
+        skipLoading: process.env.NODE_ENV === "test"  // tests skip the 2s loading delay
       });
     });
 
