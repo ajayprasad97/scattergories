@@ -237,6 +237,11 @@
   const socket = io();
   let myName = "", isHost = false, gameCode = "";
 
+  // ── Debug trace (remove before release) ──
+  function dbg(...args) {
+    console.log(`[SCAT ${new Date().toISOString().slice(11,23)}]`, ...args);
+  }
+
   // ── UI Helpers ──
   function showScreen(id) {
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
@@ -320,18 +325,16 @@
 
         case "between_rounds":
           document.getElementById("between-title").textContent = `Round ${res.currentRound} Done`;
-          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(res.scoreboard, true);
+          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(res.scoreboard, true) + renderMyAnswers();
           document.getElementById("between-host-btn").style.display = isHost ? "block" : "none";
           document.getElementById("between-waiting").style.display  = isHost ? "none" : "block";
           showScreen("between_rounds");
-          requestAnimationFrame(injectMyAnswers);
           break;
 
         case "scores":
-          document.getElementById("scoreboard").innerHTML = renderScoreboard(res.scoreboard, false);
+          document.getElementById("scoreboard").innerHTML = renderScoreboard(res.scoreboard, false) + renderMyAnswers();
           document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
           showScreen("scores");
-          requestAnimationFrame(injectMyAnswers);
           break;
       }
     });
@@ -473,7 +476,9 @@
   socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
 
   socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid, skipLoading }) => {
+    dbg("phase_change received", { phase, hasMyAnswers: !!myAnswers, answerCount: myAnswers?.length, hasAnswersGrid: !!answersGrid, skipLoading });
     if (myAnswers) myAnswersSummary = myAnswers;
+    dbg("myAnswersSummary set", myAnswersSummary.length, "answers");
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       document.getElementById("review-title").textContent = `Review — Round ${currentRound || "?"} of ${totalRounds || "?"}`;
@@ -487,19 +492,23 @@
       document.getElementById("calculating-title").textContent = roundLabel;
       if (!skipLoading) showScreen("calculating");
       setTimeout(() => {
+        const answerHtml = renderMyAnswers();
+        dbg("rendering scores screen", { phase, myAnswersSummaryLength: myAnswersSummary.length, answerHtmlLength: answerHtml.length });
+        if (answerHtml.length === 0) {
+          dbg("WARNING: answerHtml is empty — myAnswersSummary was", JSON.stringify(myAnswersSummary));
+        }
         if (phase === "between_rounds") {
           document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
           document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
-          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true);
+          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true) + answerHtml;
           document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
           document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
           showScreen("between_rounds");
         } else {
-          document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false);
+          document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false) + answerHtml;
           document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
           showScreen("scores");
         }
-        requestAnimationFrame(injectMyAnswers);
       }, delay);
     }
     if (phase === "lobby") { showScreen("lobby"); }
