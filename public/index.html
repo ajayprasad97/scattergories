@@ -269,8 +269,59 @@
     if (!code)   return toast("Enter a game code.");
     socket.emit("join_game", { playerName: myName, code }, (res) => {
       if (!res.success) return toast(res.error || "Failed to join.");
-      isHost = false; gameCode = res.code;
-      setupLobby(res.roomState);
+      isHost    = res.isHost;
+      gameCode  = res.code;
+
+      if (!res.rejoined) {
+        // Normal new join — always lobby
+        setupLobby(res.roomState);
+        return;
+      }
+
+      // ── Rejoin: drop onto the correct screen ──
+      toast("Welcome back! Rejoining game…");
+      switch (res.phase) {
+        case "lobby":
+          setupLobby(res.roomState);
+          break;
+
+        case "playing":
+          renderPlayingScreen(res.letter, res.categories, res.currentRound, res.totalRounds);
+          // Restore any answers already typed
+          if (res.myAnswers) {
+            Object.entries(res.myAnswers).forEach(([i, val]) => {
+              const inp = document.querySelector(`.cat-input[data-index="${i}"]`);
+              if (inp) inp.value = val;
+            });
+          }
+          showScreen("playing");
+          updateTimer(res.timeLeft);
+          break;
+
+        case "review":
+          document.getElementById("review-title").textContent =
+            `Review — Round ${res.currentRound} of ${res.totalRounds}`;
+          document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
+          if (res.answersGrid) renderAnswersGrid(res.answersGrid);
+          showScreen("review");
+          break;
+
+        case "between_rounds":
+          document.getElementById("between-title").textContent = `Round ${res.currentRound} Done`;
+          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(res.scoreboard, true);
+          document.getElementById("between-host-btn").style.display = isHost ? "block" : "none";
+          document.getElementById("between-waiting").style.display  = isHost ? "none" : "block";
+          showScreen("between_rounds");
+          requestAnimationFrame(injectMyAnswers);
+          break;
+
+        case "scores":
+          document.getElementById("scoreboard").innerHTML = renderScoreboard(res.scoreboard, false);
+          document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
+          showScreen("scores");
+          requestAnimationFrame(injectMyAnswers);
+          break;
+      }
     });
   }
 
@@ -409,7 +460,8 @@
 
   socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
 
-  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound }) => {
+  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers }) => {
+    if (myAnswers) myAnswersSummary = myAnswers;
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       document.getElementById("review-title").textContent = `Review — Round ${currentRound || "?"} of ${totalRounds || "?"}`;
@@ -442,10 +494,7 @@
   // ── My answers summary (shown on between-rounds and final scores) ──
   let myAnswersSummary = [];
 
-  socket.on("my_answers_summary", ({ myAnswers }) => {
-    myAnswersSummary = myAnswers;
-    requestAnimationFrame(injectMyAnswers);
-  });
+  // my_answers_summary is now bundled inside phase_change — no separate handler needed
 
   function renderMyAnswers() {
     if (!myAnswersSummary.length) return "";

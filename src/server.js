@@ -216,17 +216,89 @@ io.on("connection", (socket) => {
     console.log(`Room ${code} created by ${playerName} (${settings.totalRounds} rounds)`);
   });
 
-  // ── Join game ──
+  // ── Join game (handles both new joins and rejoins) ──
   socket.on("join_game", ({ playerName, code }, cb) => {
     const room = rooms[code];
     if (!room) return cb({ success: false, error: "Game not found. Check your code." });
+
+    const normName = (playerName || "").trim().toLowerCase();
+
+    // ── Rejoin: find existing player with same name ──
+    const existingSocketId = Object.keys(room.players).find(sid =>
+      room.players[sid].name.trim().toLowerCase() === normName
+    );
+
+    if (existingSocketId && existingSocketId !== socket.id) {
+      const player = room.players[existingSocketId];
+
+      // Swap socket ID in players map
+      room.players[socket.id] = player;
+      delete room.players[existingSocketId];
+
+      // Swap host if needed
+      if (room.hostId === existingSocketId) room.hostId = socket.id;
+
+      // Swap socket ID in all vote sets
+      Object.values(room.votes).forEach(v => {
+        if (v.yes.has(existingSocketId)) { v.yes.delete(existingSocketId); v.yes.add(socket.id); }
+        if (v.no.has(existingSocketId))  { v.no.delete(existingSocketId);  v.no.add(socket.id); }
+      });
+
+      // Swap socket ID in flagged keys
+      const updatedFlagged = {};
+      Object.entries(room.flagged).forEach(([key, val]) => {
+        updatedFlagged[key.replace(existingSocketId, socket.id)] = val;
+      });
+      room.flagged = updatedFlagged;
+
+      socket.join(code);
+      socket.data.gameCode = code;
+      const isHost = room.hostId === socket.id;
+
+      // Build rejoin payload based on current phase
+      const rejoinPayload = {
+        success: true, code, isHost, rejoined: true,
+        phase: room.phase,
+        roomState: getRoomState(room)
+      };
+
+      if (room.phase === "playing") {
+        rejoinPayload.letter     = room.letter;
+        rejoinPayload.categories = room.categories;
+        rejoinPayload.timeLeft   = room.timeLeft;
+        rejoinPayload.currentRound = room.currentRound;
+        rejoinPayload.totalRounds  = room.settings.totalRounds;
+        rejoinPayload.myAnswers    = player.answers;
+      }
+      if (room.phase === "review") {
+        rejoinPayload.answersGrid = getAnswersGridForPlayer(room, socket.id);
+        rejoinPayload.currentRound = room.currentRound;
+        rejoinPayload.totalRounds  = room.settings.totalRounds;
+      }
+      if (room.phase === "scores" || room.phase === "between_rounds") {
+        const scoreboard = Object.entries(room.players)
+          .map(([id, p]) => ({ id, name: p.name, score: p.score, roundScore: p.roundScore }))
+          .sort((a, b) => b.score - a.score);
+        rejoinPayload.scoreboard   = scoreboard;
+        rejoinPayload.currentRound = room.currentRound;
+        rejoinPayload.totalRounds  = room.settings.totalRounds;
+        rejoinPayload.isLastRound  = room.currentRound >= room.settings.totalRounds;
+      }
+
+      cb(rejoinPayload);
+      io.to(code).emit("room_update", getRoomState(room));
+      console.log(`${playerName} rejoined room ${code} (phase: ${room.phase})`);
+      return;
+    }
+
+    // ── New join: only allowed in lobby ──
     if (room.phase !== "lobby") return cb({ success: false, error: "Game already in progress." });
     if (Object.keys(room.players).length >= 10) return cb({ success: false, error: "Room is full." });
 
     room.players[socket.id] = { name: playerName, score: 0, roundScore: 0, answers: {} };
     socket.join(code);
     socket.data.gameCode = code;
-    cb({ success: true, code, isHost: false, roomState: getRoomState(room) });
+    cb({ success: true, code, isHost: false, rejoined: false, phase: "lobby", roomState: getRoomState(room) });
     io.to(code).emit("room_update", getRoomState(room));
     console.log(`${playerName} joined room ${code}`);
   });
@@ -291,17 +363,7 @@ io.on("connection", (socket) => {
       .map(([id, p]) => ({ id, name: p.name, score: p.score, roundScore: p.roundScore }))
       .sort((a, b) => b.score - a.score);
 
-    io.to(code).emit("phase_change", {
-      phase: isLastRound ? "scores" : "between_rounds",
-      scoreboard,
-      currentRound: room.currentRound,
-      totalRounds: room.settings.totalRounds,
-      isLastRound
-    });
-
-    cb && cb({ success: true });
-
-    // Push each player their own answer summary from memory
+    // Send each player their summary + phase change in one event so there's no race
     Object.entries(room.players).forEach(([sid, player]) => {
       const myAnswers = room.categories.map((category, ci) => {
         const key = `${ci}_${sid}`;
@@ -311,8 +373,17 @@ io.on("connection", (socket) => {
           valid: !room.flagged[key] && !!(player.answers[ci] || "").trim()
         };
       });
-      io.to(sid).emit("my_answers_summary", { myAnswers });
+      io.to(sid).emit("phase_change", {
+        phase: isLastRound ? "scores" : "between_rounds",
+        scoreboard,
+        currentRound: room.currentRound,
+        totalRounds: room.settings.totalRounds,
+        isLastRound,
+        myAnswers  // bundled in — arrives at same time as screen change
+      });
     });
+
+    cb && cb({ success: true });
 
     // Save to Supabase asynchronously — doesn't block anything
     saveGameSession(room);
