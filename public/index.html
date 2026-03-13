@@ -231,18 +231,32 @@
   </div>
 </div>
 
+<div id="game-code-bar" style="display:none;position:fixed;bottom:0;left:0;right:0;background:var(--surface);border-top:1px solid var(--border);padding:10px 20px;align-items:center;justify-content:center;gap:10px;z-index:998;font-size:0.85rem;color:var(--muted);">
+  <span>Game code:</span>
+  <span style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.15em;color:var(--accent);" id="code-bar-value"></span>
+  <span style="color:var(--border);">·</span>
+  <span>Share with players so they can rejoin</span>
+</div>
 <div id="toast"></div>
 
 <script>
   const socket = io();
   let myName = "", isHost = false, gameCode = "";
 
-  // ── Debug trace (remove before release) ──
-  function dbg(...args) {
-    console.log(`[SCAT ${new Date().toISOString().slice(11,23)}]`, ...args);
-  }
+
 
   // ── UI Helpers ──
+  function setCodeBar(show, code) {
+    const bar = document.getElementById("game-code-bar");
+    if (!bar) return;
+    if (show && code) {
+      document.getElementById("code-bar-value").textContent = code;
+      bar.style.display = "flex";
+    } else {
+      bar.style.display = "none";
+    }
+  }
+
   function showScreen(id) {
     document.querySelectorAll(".screen").forEach(s => s.classList.remove("active"));
     const el = document.getElementById("screen-" + id);
@@ -275,6 +289,7 @@
     socket.emit("create_game", { playerName: myName, gameDuration, questionCount, totalRounds }, (res) => {
       if (!res.success) return toast("Error creating game.");
       isHost = true; gameCode = res.code;
+      setCodeBar(true, res.code);
       setupLobby(res.roomState);
     });
   }
@@ -288,6 +303,7 @@
       if (!res.success) return toast(res.error || "Failed to join.");
       isHost    = res.isHost;
       gameCode  = res.code;
+      if (res.isHost) setCodeBar(true, res.code);
 
       if (!res.rejoined) {
         // Normal new join — always lobby
@@ -476,9 +492,7 @@
   socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
 
   socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid, skipLoading }) => {
-    dbg("phase_change received", { phase, hasMyAnswers: !!myAnswers, answerCount: myAnswers?.length, hasAnswersGrid: !!answersGrid, skipLoading });
     if (myAnswers) myAnswersSummary = myAnswers;
-    dbg("myAnswersSummary set", myAnswersSummary.length, "answers");
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       document.getElementById("review-title").textContent = `Review — Round ${currentRound || "?"} of ${totalRounds || "?"}`;
@@ -493,10 +507,6 @@
       if (!skipLoading) showScreen("calculating");
       setTimeout(() => {
         const answerHtml = renderMyAnswers();
-        dbg("rendering scores screen", { phase, myAnswersSummaryLength: myAnswersSummary.length, answerHtmlLength: answerHtml.length });
-        if (answerHtml.length === 0) {
-          dbg("WARNING: answerHtml is empty — myAnswersSummary was", JSON.stringify(myAnswersSummary));
-        }
         if (phase === "between_rounds") {
           document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
           document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
@@ -511,7 +521,7 @@
         }
       }, delay);
     }
-    if (phase === "lobby") { showScreen("lobby"); }
+    if (phase === "lobby") { setCodeBar(false); showScreen("lobby"); }
   });
 
   socket.on("vote_update", (grid) => { renderAnswersGrid(grid); });
