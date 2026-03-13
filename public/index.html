@@ -419,13 +419,13 @@
     if (phase === "between_rounds") {
       document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
       document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
-      document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true) + renderMyAnswers();
+      document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true);
       document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
       document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
       showScreen("between_rounds");
     }
     if (phase === "scores") {
-      document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false) + renderMyAnswers();
+      document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false);
       document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
       showScreen("scores");
     }
@@ -444,6 +444,7 @@
 
   socket.on("my_answers_summary", ({ myAnswers }) => {
     myAnswersSummary = myAnswers;
+    requestAnimationFrame(injectMyAnswers);
   });
 
   function renderMyAnswers() {

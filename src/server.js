@@ -299,7 +299,9 @@ io.on("connection", (socket) => {
       isLastRound
     });
 
-    // Send each player their own answer summary (valid ones in green, flagged in red)
+    cb && cb({ success: true });
+
+    // Push each player their own answer summary from memory
     Object.entries(room.players).forEach(([sid, player]) => {
       const myAnswers = room.categories.map((category, ci) => {
         const key = `${ci}_${sid}`;
@@ -312,9 +314,7 @@ io.on("connection", (socket) => {
       io.to(sid).emit("my_answers_summary", { myAnswers });
     });
 
-    cb && cb({ success: true });
-
-    // Save each round to Supabase
+    // Save to Supabase asynchronously — doesn't block anything
     saveGameSession(room);
   });
 
@@ -367,6 +367,14 @@ io.on("connection", (socket) => {
     }
     console.log(`Socket disconnected: ${socket.id}`);
   });
+});
+
+// ─── Global error handlers — prevent silent crashes ──────────────────────────
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled Rejection:", reason);
+});
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught Exception:", err.message, err.stack);
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
