@@ -344,7 +344,10 @@ io.on("connection", (socket) => {
     if (voteType === "yes") v.yes.add(socket.id);
     if (voteType === "no")  v.no.add(socket.id);
 
-    const majority = Math.floor(Object.keys(room.players).length / 2) + 1;
+    // Majority is based on eligible voters (everyone except the answer owner)
+    // so that in a 2-player game, 1 no vote is enough to flag
+    const eligibleVoters = Object.keys(room.players).filter(sid => sid !== targetPlayerId).length;
+    const majority = Math.floor(eligibleVoters / 2) + 1;
     if (v.no.size >= majority)  room.flagged[key] = true;
     if (v.yes.size >= majority) room.flagged[key] = false;
 
