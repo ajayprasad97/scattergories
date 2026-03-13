@@ -161,9 +161,14 @@ function startTimer(room) {
 function endRound(room) {
   room.phase = "review";
   detectDuplicates(room);
-  io.to(room.code).emit("phase_change", { phase: "review", currentRound: room.currentRound, totalRounds: room.settings.totalRounds });
+  // Bundle answersGrid into phase_change per player — one event, no race condition
   Object.keys(room.players).forEach(sid => {
-    io.to(sid).emit("answers_grid", getAnswersGridForPlayer(room, sid));
+    io.to(sid).emit("phase_change", {
+      phase: "review",
+      currentRound: room.currentRound,
+      totalRounds: room.settings.totalRounds,
+      answersGrid: getAnswersGridForPlayer(room, sid)
+    });
   });
 }
 
@@ -344,7 +349,7 @@ io.on("connection", (socket) => {
     if (v.yes.size >= majority) room.flagged[key] = false;
 
     Object.keys(room.players).forEach(sid => {
-      io.to(sid).emit("answers_grid", getAnswersGridForPlayer(room, sid));
+      io.to(sid).emit("vote_update", getAnswersGridForPlayer(room, sid));
     });
     cb && cb({ success: true });
   });
@@ -398,7 +403,19 @@ io.on("connection", (socket) => {
     cb && cb({ success: true });
   });
 
-  // ── Play again — full reset (host only) ──
+  // ── Force end round — TEST ONLY, only active in test environment ──
+  if (process.env.NODE_ENV === "test") {
+    socket.on("force_end_round", (_, cb) => {
+      const code = socket.data.gameCode;
+      const room = rooms[code];
+      if (!room) return cb && cb({ success: false });
+      if (room.timerInterval) { clearInterval(room.timerInterval); room.timerInterval = null; }
+      endRound(room);
+      cb && cb({ success: true });
+    });
+  }
+
+    // ── Play again — full reset (host only) ──
   socket.on("play_again", (_, cb) => {
     const code = socket.data.gameCode;
     const room = rooms[code];
@@ -421,22 +438,35 @@ io.on("connection", (socket) => {
     const code = socket.data.gameCode;
     const room = rooms[code];
     if (!room) return;
-    const playerName = room.players[socket.id]?.name;
-    delete room.players[socket.id];
+    const player = room.players[socket.id];
+    const playerName = player?.name;
 
-    if (Object.keys(room.players).length === 0) {
-      if (room.timerInterval) clearInterval(room.timerInterval);
-      delete rooms[code];
-      console.log(`Room ${code} deleted (empty)`);
-    } else {
-      if (room.hostId === socket.id) {
-        room.hostId = Object.keys(room.players)[0];
-        io.to(room.hostId).emit("you_are_host");
+    if (room.phase === "lobby") {
+      // In lobby: remove immediately, they haven't played yet
+      delete room.players[socket.id];
+      if (Object.keys(room.players).length === 0) {
+        if (room.timerInterval) clearInterval(room.timerInterval);
+        delete rooms[code];
+        console.log(`Room ${code} deleted (empty)`);
+        return;
       }
-      io.to(code).emit("room_update", getRoomState(room));
-      io.to(code).emit("player_left", { playerName });
+    } else {
+      // In-game: mark as disconnected but keep in room so they can rejoin
+      if (player) player.disconnected = true;
     }
-    console.log(`Socket disconnected: ${socket.id}`);
+
+    if (room.hostId === socket.id) {
+      const nextHostId =
+        Object.keys(room.players).find(id => !room.players[id].disconnected)
+        || Object.keys(room.players)[0];
+      if (nextHostId) {
+        room.hostId = nextHostId;
+        io.to(nextHostId).emit("you_are_host");
+      }
+    }
+    io.to(code).emit("room_update", getRoomState(room));
+    io.to(code).emit("player_left", { playerName });
+    console.log(`Socket disconnected: ${socket.id} (${playerName}, phase: ${room.phase})`);
   });
 });
 
@@ -449,5 +479,10 @@ process.on("uncaughtException", (err) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => console.log(`🎲 Scattergories running on port ${PORT}`));
+// Only auto-start when run directly, not when required by tests
+if (require.main === module) {
+  const PORT = process.env.PORT || 3000;
+  server.listen(PORT, () => console.log(`🎲 Scattergories running on port ${PORT}`));
+}
+
+module.exports = { server, rooms };

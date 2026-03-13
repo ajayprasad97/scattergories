@@ -460,13 +460,14 @@
 
   socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
 
-  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers }) => {
+  socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid }) => {
     if (myAnswers) myAnswersSummary = myAnswers;
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       document.getElementById("review-title").textContent = `Review — Round ${currentRound || "?"} of ${totalRounds || "?"}`;
       document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
       showScreen("review");
+      if (answersGrid) renderAnswersGrid(answersGrid);
     }
     if (phase === "between_rounds") {
       document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
@@ -484,7 +485,7 @@
     if (phase === "lobby") { showScreen("lobby"); }
   });
 
-  socket.on("answers_grid", (grid) => { renderAnswersGrid(grid); });
+  socket.on("vote_update", (grid) => { renderAnswersGrid(grid); });
 
   function updateTimer(sec) {
     const el = document.getElementById("timer-display");
