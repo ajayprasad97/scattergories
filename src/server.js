@@ -135,14 +135,24 @@ function detectDuplicates(room) {
   });
 }
 
+function isDoublePoints(answer, letter) {
+  if (!answer || !letter) return false;
+  const norm = answer.trim().toLowerCase();
+  const l = letter.toLowerCase();
+  return norm.length > 1 && norm.startsWith(l) && norm.endsWith(l);
+}
+
 function calculateRoundScores(room) {
   Object.entries(room.players).forEach(([sid, player]) => {
     let roundScore = 0;
     room.categories.forEach((_, ci) => {
-      if (!room.flagged[`${ci}_${sid}`]) roundScore++;
+      if (!room.flagged[`${ci}_${sid}`]) {
+        const pts = isDoublePoints(player.answers[ci], room.letter) ? 2 : 1;
+        roundScore += pts;
+      }
     });
     player.roundScore = roundScore;
-    player.score += roundScore; // accumulate
+    player.score += roundScore;
   });
 }
 
@@ -375,10 +385,13 @@ io.on("connection", (socket) => {
     Object.entries(room.players).forEach(([sid, player]) => {
       const myAnswers = room.categories.map((category, ci) => {
         const key = `${ci}_${sid}`;
+        const answer = player.answers[ci] || "";
+        const valid = !room.flagged[key] && !!answer.trim();
         return {
           category,
-          answer: player.answers[ci] || "",
-          valid: !room.flagged[key] && !!(player.answers[ci] || "").trim()
+          answer,
+          valid,
+          double: valid && isDoublePoints(answer, room.letter)
         };
       });
       io.to(sid).emit("phase_change", {

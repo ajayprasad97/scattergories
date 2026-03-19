@@ -110,7 +110,21 @@
   <div class="logo">Scatter<span>gories</span></div>
   <p class="tagline">Race the clock. Think fast. No duplicates.</p>
   <div class="card" style="max-width:440px;">
-    <div class="tabs">
+    <details style="width:100%;max-width:860px;padding:0 24px;">
+  <summary style="cursor:pointer;font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--muted);list-style:none;display:flex;align-items:center;gap:8px;padding:12px 0;border-bottom:1px solid var(--border);">
+    <span>How to Play</span><span style="font-size:0.7rem;">▾</span>
+  </summary>
+  <div style="padding:16px 0;display:flex;flex-direction:column;gap:10px;font-size:0.9rem;color:var(--muted);line-height:1.6;">
+    <p>🎯 <strong style="color:var(--text);">Objective</strong> — Score points by naming things in each category that start with the round letter before time runs out.</p>
+    <p>⚡ <strong style="color:var(--text);">Double points</strong> — If your answer <em>starts and ends</em> with the round letter (e.g. letter A → <strong style="color:var(--accent);">Anaconda</strong>), you score 2 points instead of 1.</p>
+    <p>❌ <strong style="color:var(--text);">Duplicates</strong> — If two or more players write the same answer, everyone with that answer scores 0.</p>
+    <p>🗳️ <strong style="color:var(--text);">Voting</strong> — After the timer, players vote on each other's answers. A majority no vote removes the point. You can't vote on your own answers.</p>
+    <p>🏆 <strong style="color:var(--text);">Winning</strong> — Scores accumulate across all rounds. Highest total at the end wins.</p>
+    <p style="color:var(--border);font-size:0.8rem;">Tip: answers autosave as you type — there's no submit button.</p>
+  </div>
+</details>
+
+<div class="tabs">
       <button class="tab active" onclick="switchTab('join')">Join Game</button>
       <button class="tab" onclick="switchTab('host')">Host Game</button>
     </div>
@@ -542,10 +556,10 @@
       <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:10px;">Your Answers This Round</div>
       <div style="display:flex;flex-direction:column;gap:6px;">
         ${myAnswersSummary.map(a => `
-          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid ${a.valid ? 'rgba(80,200,120,0.3)' : 'rgba(224,85,85,0.2)'};border-radius:8px;">
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid ${a.valid ? (a.double ? 'rgba(240,192,64,0.4)' : 'rgba(80,200,120,0.3)') : 'rgba(224,85,85,0.2)'};border-radius:8px;">
             <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">${escHtml(a.category)}</span>
-            <span style="flex:1;font-weight:500;color:${a.valid ? 'var(--accent3)' : 'var(--accent2)'};">${escHtml(a.answer || '—')}</span>
-            <span style="font-size:0.75rem;color:${a.valid ? 'var(--accent3)' : 'var(--accent2)'};">${a.valid ? '✓ point' : a.answer ? '✗ no point' : '—'}</span>
+            <span style="flex:1;font-weight:500;color:${a.valid ? (a.double ? 'var(--accent)' : 'var(--accent3)') : 'var(--accent2)'};">${escHtml(a.answer || '—')}</span>
+            <span style="font-size:0.75rem;color:${a.valid ? (a.double ? 'var(--accent)' : 'var(--accent3)') : 'var(--accent2)'};">${a.double ? '★ 2 pts' : a.valid ? '✓ 1 pt' : a.answer ? '✗ no point' : '—'}</span>
           </div>`).join("")}
       </div>
     </div>`;
