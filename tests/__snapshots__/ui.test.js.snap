@@ -1,0 +1,159 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`renderMyAnswers snapshots all answers invalid 1`] = `
+"<div style="width:100%;margin-top:8px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:10px;">Your Answers This Round</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">An animal</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">Albatross</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">✗ no point</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A city</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">Amsterdam</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">✗ no point</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A food or drink</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">Avocado</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">✗ no point</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A TV show</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">Archer</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">✗ no point</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A boy's name</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">—</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">—</span>
+          </div>
+      </div>
+    </div>"
+`;
+
+exports[`renderMyAnswers snapshots all answers valid 1`] = `
+"<div style="width:100%;margin-top:8px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:10px;">Your Answers This Round</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">An animal</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Albatross</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A city</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Amsterdam</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A food or drink</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Avocado</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A TV show</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Archer</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A boy's name</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">—</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+      </div>
+    </div>"
+`;
+
+exports[`renderMyAnswers snapshots mix of valid and invalid answers 1`] = `
+"<div style="width:100%;margin-top:8px;">
+      <div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.06em;color:var(--accent);margin-bottom:10px;">Your Answers This Round</div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">An animal</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Albatross</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A city</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Amsterdam</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(80,200,120,0.3);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A food or drink</span>
+            <span style="flex:1;font-weight:500;color:var(--accent3);">Avocado</span>
+            <span style="font-size:0.75rem;color:var(--accent3);">✓ 1 pt</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A TV show</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">Archer</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">✗ no point</span>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;padding:8px 14px;background:var(--surface);border:1px solid rgba(224,85,85,0.2);border-radius:8px;">
+            <span style="font-size:0.78rem;color:var(--muted);min-width:160px;">A boy's name</span>
+            <span style="flex:1;font-weight:500;color:var(--accent2);">—</span>
+            <span style="font-size:0.75rem;color:var(--accent2);">—</span>
+          </div>
+      </div>
+    </div>"
+`;
+
+exports[`renderScoreboard snapshots between-rounds (with round score column) 1`] = `
+"
+      <div class="score-row" style="animation-delay:0s">
+        <span class="rank">1</span>
+        <span class="score-name">Ajay</span>
+        <span class="score-round-pts">+4 this round</span>
+        <span class="score-pts">10 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>
+      <div class="score-row" style="animation-delay:0.08s">
+        <span class="rank">2</span>
+        <span class="score-name">Sam</span>
+        <span class="score-round-pts">+3 this round</span>
+        <span class="score-pts">8 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>
+      <div class="score-row" style="animation-delay:0.16s">
+        <span class="rank">3</span>
+        <span class="score-name">Alice</span>
+        <span class="score-round-pts">+2 this round</span>
+        <span class="score-pts">5 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>"
+`;
+
+exports[`renderScoreboard snapshots empty scoreboard 1`] = `""`;
+
+exports[`renderScoreboard snapshots final scores (no round score column) 1`] = `
+"
+      <div class="score-row" style="animation-delay:0s">
+        <span class="rank">1</span>
+        <span class="score-name">Ajay</span>
+        
+        <span class="score-pts">10 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>
+      <div class="score-row" style="animation-delay:0.08s">
+        <span class="rank">2</span>
+        <span class="score-name">Sam</span>
+        
+        <span class="score-pts">8 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>
+      <div class="score-row" style="animation-delay:0.16s">
+        <span class="rank">3</span>
+        <span class="score-name">Alice</span>
+        
+        <span class="score-pts">5 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>"
+`;
+
+exports[`renderScoreboard snapshots single player scoreboard 1`] = `
+"
+      <div class="score-row" style="animation-delay:0s">
+        <span class="rank">1</span>
+        <span class="score-name">Solo</span>
+        <span class="score-round-pts">+7 this round</span>
+        <span class="score-pts">7 <span style="font-size:1rem;color:var(--muted)">pts</span></span>
+      </div>"
+`;

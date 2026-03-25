@@ -1,182 +1,135 @@
-# 🎲 Scattergories
+# Scattergories
 
-A real-time multiplayer Scattergories-style game. Players join with a name and game code, race a 2-minute timer to fill in 15 categories starting with a random letter, then review and vote on answers together.
-
----
-
-## How It Works
-
-1. **Host** creates a game → shares the code with friends
-2. **Players** join at your domain using name + game code
-3. Host clicks **Start Game** → everyone sees the same letter and 15 categories
-4. 2-minute countdown — players type one answer per category
-5. Timer ends → answers revealed, duplicates auto-flagged red
-6. **Review round** — any player can vote ✓/✗ to challenge answers (majority rules)
-7. Host clicks **Finalise Scores** → leaderboard shown
-8. Play as many rounds as you want
+A real-time multiplayer Scattergories-style game. No accounts, no installs — share a code and play.
 
 ---
 
-## Project Structure
+## How to Play
+
+1. One player creates a game and shares the code
+2. Everyone joins with their name + code
+3. Each round you get a random letter and a list of categories
+4. Type answers that start with that letter before the timer runs out — answers autosave, no submit button
+5. After the timer, vote on each other's answers — duplicates are auto-flagged
+6. Scores accumulate across rounds, highest total wins
+
+**Double points** — if your answer starts *and* ends with the round letter (e.g. letter A → *Anaconda*) you score 2 points instead of 1.
+
+---
+
+## Stack
+
+| Layer | Tech |
+|---|---|
+| Frontend | Vanilla HTML/CSS/JS (single file) |
+| Backend | Node.js + Express + Socket.io |
+| Database | Supabase (Postgres) |
+| Hosting | Render.com |
+
+All free tier.
+
+---
+
+## Structure
 
 ```
 scattergories/
+├── .github/
+│   └── workflows/
+│       └── test.yml        ← CI runs on every push
 ├── public/
-│   └── index.html        # Full frontend (single file)
+│   └── index.html          ← entire frontend
 ├── src/
-│   └── server.js         # Node.js + Express + Socket.io backend
+│   ├── server.js           ← game logic + socket events
+│   └── db.js               ← Supabase helper
+├── supabase/
+│   └── schema.sql          ← run once to set up DB tables
+├── tests/
+│   ├── game.test.js        ← integration tests (socket clients)
+│   └── ui.test.js          ← snapshot tests (rendering functions)
+├── .env.example
 ├── package.json
-├── render.yaml           # Render.com deployment config
-└── .gitignore
+├── render.yaml
+└── README.md
 ```
 
 ---
 
 ## Local Development
 
-### Prerequisites
-- Node.js 18+
-- npm
-
-### Steps
+**Prerequisites:** Node.js 18+
 
 ```bash
-# 1. Clone your repo
-git clone https://github.com/YOUR_USERNAME/scattergories.git
+git clone https://github.com/ajayprasad97/scattergories.git
 cd scattergories
-
-# 2. Install dependencies
 npm install
-
-# 3. Run in dev mode (auto-restarts on changes)
+cp .env.example .env   # fill in your Supabase credentials
 npm run dev
-
-# 4. Open in browser
-# http://localhost:3000
 ```
+
+Open `http://localhost:3000`.
 
 ---
 
-## Deploying to Render.com (Free)
+## Environment Variables
 
-Render auto-deploys from GitHub on every push. Zero config needed.
+```
+SUPABASE_URL=
+SUPABASE_SERVICE_KEY=
+```
 
-### Step 1 — Push to GitHub
+Set these in `.env` locally and in Render → Environment in production.
+
+To get them: create a free project at [supabase.com](https://supabase.com), then run `supabase/schema.sql` in the SQL editor.
+
+---
+
+## Running Tests
 
 ```bash
-git init
-git add .
-git commit -m "Initial commit"
-git branch -M main
-git remote add origin https://github.com/YOUR_USERNAME/scattergories.git
-git push -u origin main
+npm test
 ```
 
-### Step 2 — Create a Render Web Service
+29 tests across two suites. Runs in ~9 seconds. No real timers, no network calls — Supabase is mocked.
 
-1. Go to [render.com](https://render.com) and sign up (free)
-2. Click **New → Web Service**
-3. Connect your GitHub repo
-4. Render detects `render.yaml` automatically — just click **Deploy**
+```bash
+npm test -- --updateSnapshot   # regenerate UI snapshots after frontend changes
+npm test -- tests/ui.test.js   # run just the UI tests
+npm test -- tests/game.test.js # run just the integration tests
+```
 
-Your app will be live at `https://scattergories.onrender.com` (or similar).
-
-> **Note:** Free Render instances spin down after 15 mins of inactivity and take ~30s to wake up. For a party game this is fine — just open the URL before guests arrive.
+CI runs automatically on every push to `main` via GitHub Actions.
 
 ---
 
-## Connecting Your Own Domain
+## Deployment (Render)
 
-### On Render
-1. In your Render service → **Settings → Custom Domains**
-2. Add your domain (e.g. `scattergories.yourdomain.com`)
-3. Render gives you a CNAME value
+The repo includes a `render.yaml`. To deploy:
 
-### On Your DNS Provider (Namecheap, GoDaddy, Cloudflare, etc.)
-1. Go to DNS settings for your domain
-2. Add a **CNAME record**:
-   - **Host/Name:** `scattergories` (or `@` for root domain)
-   - **Value:** the CNAME Render gave you
-   - **TTL:** Auto
-3. Wait 5–30 minutes for DNS to propagate
+1. Push to GitHub
+2. Create a new Web Service on [render.com](https://render.com) and connect the repo
+3. Add `SUPABASE_URL` and `SUPABASE_SERVICE_KEY` in Render → Environment
+4. Render auto-deploys on every push to `main`
+
+**Note:** Free tier spins down after 15 minutes of inactivity — expect a ~30 second cold start.
 
 ---
 
-## Customising the Categories
+## Game Settings
 
-Edit the `CATEGORIES` array in `src/server.js` (line ~14):
-
-```js
-const CATEGORIES = [
-  "A boy's name",
-  "A girl's name",
-  "A city",
-  // ... add or change anything here
-];
-```
-
-Up to 20 categories work well. The frontend adapts automatically.
-
----
-
-## Customising the Letter Pool
-
-Edit the `LETTERS` string in `src/server.js`:
-
-```js
-const LETTERS = "ABCDEFGHIJKLMNOPRSTW".split("");
-```
-
-Q, X, Y, Z are excluded by default (hard to play with). Add or remove as you like.
-
----
-
-## Changing the Timer
-
-In `src/server.js`:
-
-```js
-const GAME_DURATION = 120; // seconds — change to 90, 180, etc.
-```
+| Setting | Range | Default |
+|---|---|---|
+| Timer | 30s - 10min | 2min |
+| Categories per round | 1 - 25 | 15 |
+| Rounds | 1 - 10 | 3 |
 
 ---
 
 ## Scoring Rules
 
-- **1 point** per valid unique answer
-- **0 points** for duplicates (same answer as another player, case-insensitive)
-- **0 points** for empty answers
-- Answers can be challenged during review — majority vote determines validity
-- Scores accumulate across rounds if you play multiple games in the same session
+- **1 point** — unique valid answer starting with the round letter
+- **2 points** — answer starts *and* ends with the round letter
+- **0 points** — duplicate answer (same as another player's), empty answer, or voted out by majority
+- Scores accumulate across all rounds
 
----
-
-## Tech Stack
-
-| Layer | Tech |
-|---|---|
-| Frontend | Vanilla HTML/CSS/JS (single file) |
-| Backend | Node.js + Express |
-| Real-time | Socket.io (WebSockets) |
-| State | In-memory (no database needed) |
-| Hosting | Render.com (free tier) |
-
-No database required — all game state lives in server memory per session.
-
----
-
-## Troubleshooting
-
-**Players can't connect / see each other**
-- Make sure you're all using the same URL (not `localhost` vs domain)
-- Check the game code is correct (case-insensitive)
-
-**Server crashes or restarts reset the game**
-- Free Render instances can sleep — open the URL a minute before playing
-- All in-progress games are lost on restart (by design for simplicity)
-
-**Votes aren't resolving**
-- Majority is `floor(n/2) + 1` — with 3 players, 2 votes needed to resolve
-
-**Want to add persistence / multiple rounds history?**
-- Add Upstash Redis (free tier) — DM for instructions
+Voting: majority of eligible voters (everyone except the answer's owner) needed to flag an answer. In a 2-player game, 1 no vote is enough.
