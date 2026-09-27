@@ -25,7 +25,6 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.js"],
-    "setupFilesAfterFramework": []
+    "testMatch": ["**/tests/**/*.test.js"]
   }
 }

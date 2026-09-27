@@ -10,8 +10,10 @@ A real-time multiplayer Scattergories-style game. No accounts, no installs — s
 2. Everyone joins with their name + code
 3. Each round you get a random letter and a list of categories
 4. Type answers that start with that letter before the timer runs out — answers autosave, no submit button
-5. After the timer, vote on each other's answers — duplicates are auto-flagged
+5. After the timer, vote on each other's answers — empty, wrong-letter and duplicate answers are auto-flagged
 6. Scores accumulate across rounds, highest total wins
+
+Dropped connection or refreshed the page? You're put straight back into your seat. You can also rejoin from another device by entering the same name and code.
 
 **Double points** — if your answer starts *and* ends with the round letter (e.g. letter A → *Anaconda*) you score 2 points instead of 1.
 
@@ -90,7 +92,7 @@ To get them: create a free project at [supabase.com](https://supabase.com), then
 npm test
 ```
 
-29 tests across two suites. Runs in ~9 seconds. No real timers, no network calls — Supabase is mocked.
+50 tests across two suites. Runs in a few seconds. No real timers, no network calls — Supabase is mocked.
 
 ```bash
 npm test -- --updateSnapshot   # regenerate UI snapshots after frontend changes
@@ -129,7 +131,9 @@ The repo includes a `render.yaml`. To deploy:
 
 - **1 point** — unique valid answer starting with the round letter
 - **2 points** — answer starts *and* ends with the round letter
-- **0 points** — duplicate answer (same as another player's), empty answer, or voted out by majority
+- **0 points** — empty, doesn't start with the round letter, duplicate (same as another player's), or voted out by majority
 - Scores accumulate across all rounds
 
-Voting: majority of eligible voters (everyone except the answer's owner) needed to flag an answer. In a 2-player game, 1 no vote is enough.
+A leading "The", "A" or "An" is skipped when checking the letter, so *The Beatles* is a B answer. Duplicates are matched ignoring case, spaces, punctuation and accents (*Spider-Man* = *spiderman*).
+
+Voting: majority of eligible voters (connected players other than the answer's owner) needed to flag an answer. In a 2-player game, 1 no vote is enough. Votes can be changed until the host finalises. Letters and categories don't repeat within a game.

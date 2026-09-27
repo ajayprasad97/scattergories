@@ -85,6 +85,7 @@
     .flag-badge { font-size: 0.72rem; padding: 2px 8px; border-radius: 999px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
     .flag-badge.dup { background: rgba(224,85,85,0.15); color: var(--accent2); border: 1px solid rgba(224,85,85,0.3); }
     .flag-badge.empty { background: rgba(112,112,160,0.15); color: var(--muted); border: 1px solid rgba(112,112,160,0.3); }
+    .flag-badge.voted { background: rgba(240,192,64,0.12); color: var(--accent); border: 1px solid rgba(240,192,64,0.3); }
     .vote-btns { display: flex; gap: 6px; }
     .vote-btn { padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--surface2); color: var(--text); font-size: 0.82rem; cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; }
     .vote-btn:hover { border-color: var(--accent); }
@@ -207,7 +208,7 @@
   <div class="phase-banner">
     <div>
       <div class="phase-title" id="review-title">Review Round</div>
-      <div style="font-size:0.82rem;color:var(--muted);">Red = duplicate/invalid. Vote to challenge any answer.</div>
+      <div style="font-size:0.82rem;color:var(--muted);">Red = empty, wrong letter or duplicate. Vote ✗ to challenge any other answer.</div>
     </div>
     <div id="review-host-btn" style="display:none;">
       <button class="btn btn-success" onclick="finaliseScores()">Finalise Scores →</button>
@@ -250,14 +251,27 @@
   <span style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:0.15em;color:var(--accent);" id="code-bar-value"></span>
   <span style="color:var(--border);">·</span>
   <span>Share with players so they can rejoin</span>
+  <button onclick="leaveGame()" style="margin-left:8px;padding:4px 12px;border-radius:6px;border:1px solid var(--border);background:var(--surface2);color:var(--muted);font-family:'DM Sans',sans-serif;font-size:0.8rem;cursor:pointer;">Leave</button>
 </div>
 <div id="toast"></div>
 
 <script>
   const socket = io();
-  let myName = "", isHost = false, gameCode = "";
+  let myName = "", isHost = false, gameCode = "", myPlayerId = "";
+  let myAnswersSummary = [];
 
-
+  // ── Session (lets a refresh or dropped connection rejoin the same seat) ──
+  const SESSION_KEY = "scattergories_session";
+  function saveSession(res) {
+    myPlayerId = res.playerId; gameCode = res.code;
+    try { localStorage.setItem(SESSION_KEY, JSON.stringify({ code: res.code, name: myName, token: res.token })); } catch (_) {}
+  }
+  function loadSession() {
+    try { return JSON.parse(localStorage.getItem(SESSION_KEY)); } catch (_) { return null; }
+  }
+  function clearSession() {
+    try { localStorage.removeItem(SESSION_KEY); } catch (_) {}
+  }
 
   // ── UI Helpers ──
   function setCodeBar(show, code) {
@@ -290,7 +304,15 @@
     return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,"0")}`;
   }
   function escHtml(str) {
-    return (str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+    return (str||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+  // Host-only buttons and "waiting for host" messages across every screen
+  function applyHostControls() {
+    ["host-start-btn", "review-host-btn", "between-host-btn", "scores-host-btn"].forEach(id => {
+      document.getElementById(id).style.display = isHost ? "block" : "none";
+    });
+    document.getElementById("waiting-msg").style.display     = isHost ? "none" : "block";
+    document.getElementById("between-waiting").style.display = isHost ? "none" : "block";
   }
 
   // ── Actions ──
@@ -301,8 +323,9 @@
     const questionCount = parseInt(document.getElementById("host-questions").value);
     const totalRounds   = parseInt(document.getElementById("host-rounds").value);
     socket.emit("create_game", { playerName: myName, gameDuration, questionCount, totalRounds }, (res) => {
-      if (!res.success) return toast("Error creating game.");
-      isHost = true; gameCode = res.code;
+      if (!res.success) return toast(res.error || "Error creating game.");
+      isHost = true;
+      saveSession(res);
       setCodeBar(true, res.code);
       setupLobby(res.roomState);
     });
@@ -315,59 +338,94 @@
     if (!code)   return toast("Enter a game code.");
     socket.emit("join_game", { playerName: myName, code }, (res) => {
       if (!res.success) return toast(res.error || "Failed to join.");
-      isHost    = res.isHost;
-      gameCode  = res.code;
-      if (res.isHost) setCodeBar(true, res.code);
+      handleJoinResponse(res);
+    });
+  }
 
-      if (!res.rejoined) {
-        // Normal new join — always lobby
-        setupLobby(res.roomState);
+  // Try to get back into the saved game — on page load and after every reconnect
+  function resumeSession() {
+    const saved = loadSession();
+    if (!saved) return;
+    document.getElementById("join-name").value = saved.name || "";
+    document.getElementById("join-code").value = saved.code || "";
+    socket.emit("join_game", { playerName: saved.name, code: saved.code, token: saved.token }, (res) => {
+      if (!res.success) {
+        // Game is gone (or the seat was taken) — back to the home screen
+        clearSession(); setCodeBar(false);
+        if (gameCode) { gameCode = ""; showScreen("home"); toast(res.error || "Lost connection to the game."); }
         return;
       }
-
-      // ── Rejoin: drop onto the correct screen ──
-      toast("Welcome back! Rejoining game…");
-      switch (res.phase) {
-        case "lobby":
-          setupLobby(res.roomState);
-          break;
-
-        case "playing":
-          renderPlayingScreen(res.letter, res.categories, res.currentRound, res.totalRounds);
-          // Restore any answers already typed
-          if (res.myAnswers) {
-            Object.entries(res.myAnswers).forEach(([i, val]) => {
-              const inp = document.querySelector(`.cat-input[data-index="${i}"]`);
-              if (inp) inp.value = val;
-            });
-          }
-          showScreen("playing");
-          updateTimer(res.timeLeft);
-          break;
-
-        case "review":
-          document.getElementById("review-title").textContent =
-            `Review — Round ${res.currentRound} of ${res.totalRounds}`;
-          document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
-          if (res.answersGrid) renderAnswersGrid(res.answersGrid);
-          showScreen("review");
-          break;
-
-        case "between_rounds":
-          document.getElementById("between-title").textContent = `Round ${res.currentRound} Done`;
-          document.getElementById("between-scoreboard").innerHTML = renderScoreboard(res.scoreboard, true) + renderMyAnswers();
-          document.getElementById("between-host-btn").style.display = isHost ? "block" : "none";
-          document.getElementById("between-waiting").style.display  = isHost ? "none" : "block";
-          showScreen("between_rounds");
-          break;
-
-        case "scores":
-          document.getElementById("scoreboard").innerHTML = renderScoreboard(res.scoreboard, false) + renderMyAnswers();
-          document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
-          showScreen("scores");
-          break;
-      }
+      myName = saved.name;
+      handleJoinResponse(res, true);
     });
+  }
+
+  function handleJoinResponse(res, quiet = false) {
+    isHost    = res.isHost;
+    saveSession(res);
+    setCodeBar(true, res.code);
+    if (res.myAnswers && Array.isArray(res.myAnswers)) myAnswersSummary = res.myAnswers;
+
+    if (!res.rejoined) {
+      // Normal new join — always lobby
+      setupLobby(res.roomState);
+      return;
+    }
+
+    // ── Rejoin: drop onto the correct screen ──
+    if (!quiet) toast("Welcome back! Rejoining game…");
+    switch (res.phase) {
+      case "lobby":
+        setupLobby(res.roomState);
+        break;
+
+      case "playing": {
+        // Reconnected mid-round: keep what's in the inputs (it may be newer than the server's copy)
+        const sameRound = quiet && document.getElementById("screen-playing").classList.contains("active")
+          && document.getElementById("round-badge").textContent === `Round ${res.currentRound} of ${res.totalRounds}`;
+        if (sameRound) { saveAnswers(); updateTimer(res.timeLeft); break; }
+        renderPlayingScreen(res.letter, res.categories, res.currentRound, res.totalRounds);
+        // Restore any answers already typed
+        if (res.myAnswers) {
+          Object.entries(res.myAnswers).forEach(([i, val]) => {
+            const inp = document.querySelector(`.cat-input[data-index="${i}"]`);
+            if (inp) inp.value = val;
+          });
+        }
+        showScreen("playing");
+        updateTimer(res.timeLeft);
+        break;
+      }
+
+      case "review":
+        document.getElementById("review-title").textContent =
+          `Review — Round ${res.currentRound} of ${res.totalRounds}`;
+        applyHostControls();
+        if (res.answersGrid) renderAnswersGrid(res.answersGrid);
+        showScreen("review");
+        break;
+
+      case "between_rounds":
+        document.getElementById("between-title").textContent = `Round ${res.currentRound} Done`;
+        document.getElementById("between-scoreboard").innerHTML = renderScoreboard(res.scoreboard, true) + renderMyAnswers();
+        applyHostControls();
+        showScreen("between_rounds");
+        break;
+
+      case "scores":
+        document.getElementById("scoreboard").innerHTML = renderScoreboard(res.scoreboard, false) + renderMyAnswers();
+        applyHostControls();
+        showScreen("scores");
+        break;
+    }
+  }
+
+  function leaveGame() {
+    socket.emit("leave_game", {}, () => {});
+    clearSession(); setCodeBar(false);
+    if (window._autosaveInterval) clearInterval(window._autosaveInterval);
+    gameCode = ""; isHost = false; myPlayerId = "";
+    showScreen("home");
   }
 
   function setupLobby(roomState) {
@@ -381,8 +439,7 @@
       document.getElementById("lobby-settings").textContent =
         `${s.totalRounds} round${s.totalRounds>1?"s":""} · ${timeLabel} · ${s.questionCount} questions`;
     }
-    document.getElementById("host-start-btn").style.display = isHost ? "block" : "none";
-    document.getElementById("waiting-msg").style.display    = isHost ? "none"  : "block";
+    applyHostControls();
     showScreen("lobby");
   }
 
@@ -409,15 +466,19 @@
     return answers;
   }
   function saveAnswers() {
-    socket.emit("save_answers", { answers: getAnswers() }, () => {});
+    socket.emit("save_answers", { answers: getAnswers() }, (res) => {
+      const el = document.getElementById("autosave-indicator");
+      if (el && document.getElementById("screen-playing").classList.contains("active"))
+        el.textContent = res?.success ? "Saved ✓" : "Not saved";
+    });
   }
 
   // ── Rendering ──
   function renderPlayers(players) {
     document.getElementById("player-count").textContent = players.length;
     document.getElementById("player-list").innerHTML = players.map(p => `
-      <div class="player-chip ${p.isHost ? 'host' : ''}">
-        <span class="dot"></span>${escHtml(p.name)}${p.isHost ? ' 👑' : ''}
+      <div class="player-chip ${p.isHost ? 'host' : ''}" style="${p.connected === false ? 'opacity:0.5;' : ''}">
+        <span class="dot"></span>${escHtml(p.name)}${p.isHost ? ' 👑' : ''}${p.connected === false ? ' (away)' : ''}
       </div>`).join("");
   }
 
@@ -438,10 +499,7 @@
       inp.addEventListener("input", () => {
         document.getElementById("autosave-indicator").textContent = "Saving…";
         clearTimeout(debounceTimer);
-        debounceTimer = setTimeout(() => {
-          saveAnswers();
-          document.getElementById("autosave-indicator").textContent = "Saved ✓";
-        }, 800);
+        debounceTimer = setTimeout(saveAnswers, 500);
       });
     });
     if (window._autosaveInterval) clearInterval(window._autosaveInterval);
@@ -453,14 +511,16 @@
       <div class="category-block">
         <div class="category-header">${escHtml(category)}</div>
         ${entries.map(e => {
-          const isEmpty = !e.answer;
-          const badgeHtml = e.flagged ? `<span class="flag-badge ${isEmpty ? 'empty' : 'dup'}">${isEmpty ? 'empty' : 'duplicate'}</span>` : "";
-          const isMyAnswer = e.playerId === socket.id;
-          const voteHtml = !e.flagged && e.answer && !isMyAnswer ? `
+          const reason = e.flagReason || (e.flagged ? (e.answer ? 'duplicate' : 'empty') : '');
+          const badgeClass = reason === 'empty' ? 'empty' : reason === 'voted out' ? 'voted' : 'dup';
+          const badgeHtml = reason ? `<span class="flag-badge ${badgeClass}">${escHtml(reason)}</span>` : "";
+          const isMyAnswer = e.playerId === myPlayerId;
+          const votable = e.votable ?? !e.flagged;
+          const voteHtml = votable && e.answer && !isMyAnswer ? `
             <div class="vote-btns">
               <button class="vote-btn ${e.myVoteYes ? 'active-yes' : ''}" onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteYes ? 'clear' : 'yes'}')">✓ ${e.voteYes}</button>
               <button class="vote-btn ${e.myVoteNo  ? 'active-no'  : ''}" onclick="castVote(${categoryIndex}, '${e.playerId}', '${e.myVoteNo  ? 'clear' : 'no'}')">✗ ${e.voteNo}</button>
-            </div>` : (isMyAnswer && !e.flagged && e.answer ? '<span style="font-size:0.75rem;color:var(--muted);padding:4px 8px;">your answer</span>' : "");
+            </div>` : (isMyAnswer && votable && e.answer ? '<span style="font-size:0.75rem;color:var(--muted);padding:4px 8px;">your answer</span>' : "");
           return `<div class="answer-row ${e.flagged ? 'flagged' : ''}">
             <span class="player-name-col">${escHtml(e.playerName)}</span>
             <span class="answer-text">${escHtml(e.answer || '—')}</span>
@@ -489,10 +549,18 @@
 
   socket.on("player_left", ({ playerName }) => { toast(`${playerName} left the game`); });
 
+  socket.on("connect", resumeSession);
+
+  socket.on("session_replaced", () => {
+    gameCode = ""; isHost = false; setCodeBar(false);
+    if (window._autosaveInterval) clearInterval(window._autosaveInterval);
+    showScreen("home");
+    toast("You joined this game from another tab or device.");
+  });
+
   socket.on("you_are_host", () => {
     isHost = true;
-    document.getElementById("host-start-btn").style.display = "block";
-    document.getElementById("waiting-msg").style.display = "none";
+    applyHostControls();
     toast("You are now the host 👑");
   });
 
@@ -503,14 +571,18 @@
     updateTimer(timeLeft);
   });
 
-  socket.on("timer_tick", ({ timeLeft }) => { updateTimer(timeLeft); });
+  socket.on("timer_tick", ({ timeLeft }) => {
+    updateTimer(timeLeft);
+    // Flush anything still sitting in the debounce before the round closes
+    if (timeLeft === 2) saveAnswers();
+  });
 
   socket.on("phase_change", ({ phase, scoreboard, currentRound, totalRounds, isLastRound, myAnswers, answersGrid, skipLoading }) => {
     if (myAnswers) myAnswersSummary = myAnswers;
     if (phase === "review") {
       if (window._autosaveInterval) clearInterval(window._autosaveInterval);
       document.getElementById("review-title").textContent = `Review — Round ${currentRound || "?"} of ${totalRounds || "?"}`;
-      document.getElementById("review-host-btn").style.display = isHost ? "block" : "none";
+      applyHostControls();
       showScreen("review");
       if (answersGrid) renderAnswersGrid(answersGrid);
     }
@@ -525,17 +597,16 @@
           document.getElementById("between-title").textContent = `Round ${currentRound} Done`;
           document.getElementById("between-subtitle").textContent = `Round scores shown — total on the right`;
           document.getElementById("between-scoreboard").innerHTML = renderScoreboard(scoreboard, true) + answerHtml;
-          document.getElementById("between-host-btn").style.display  = isHost ? "block" : "none";
-          document.getElementById("between-waiting").style.display   = isHost ? "none"  : "block";
+          applyHostControls();
           showScreen("between_rounds");
         } else {
           document.getElementById("scoreboard").innerHTML = renderScoreboard(scoreboard, false) + answerHtml;
-          document.getElementById("scores-host-btn").style.display = isHost ? "block" : "none";
+          applyHostControls();
           showScreen("scores");
         }
       }, delay);
     }
-    if (phase === "lobby") { setCodeBar(false); showScreen("lobby"); }
+    if (phase === "lobby") { myAnswersSummary = []; applyHostControls(); showScreen("lobby"); }
   });
 
   socket.on("vote_update", (grid) => { renderAnswersGrid(grid); });
@@ -546,7 +617,6 @@
   }
 
   // ── My answers summary (shown on between-rounds and final scores) ──
-  let myAnswersSummary = [];
 
   // my_answers_summary is now bundled inside phase_change — no separate handler needed
 
