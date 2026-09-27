@@ -9,6 +9,11 @@ jest.mock("../src/db", () => ({
   saveGameSession: jest.fn().mockResolvedValue("mock-session-id")
 }));
 
+// Short grace period so "player went away" logic can be tested quickly
+process.env.AWAY_GRACE_MS = "300";
+const GRACE = 300;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
 const { io: clientIo } = require("socket.io-client");
 const { server, rooms } = require("../src/server");
 
@@ -170,9 +175,33 @@ describe("Lobby", () => {
 
   test("room is deleted when everyone leaves the lobby", async () => {
     const { host, player, code } = await createAndJoin();
-    host.disconnect(); player.disconnect();
-    await new Promise(r => setTimeout(r, 200));
+    await emit(host, "leave_game", {});
+    await emit(player, "leave_game", {});
     expect(rooms[code]).toBeUndefined();
+  });
+
+  test("a player who drops out of the lobby keeps their seat when the game starts", async () => {
+    const host   = makeClient();
+    const player = makeClient();
+    const { code } = await emit(host, "create_game", { playerName: "Host", gameDuration: 120, questionCount: 3, totalRounds: 1 });
+    const { token } = await emit(player, "join_game", { playerName: "Alice", code });
+    player.disconnect(); // e.g. switched to WhatsApp to share the code
+    await sleep(GRACE + 200);
+    await emit(host, "start_game", {});
+
+    const res = await emit(makeClient(), "join_game", { code, token });
+    expect(res.success).toBe(true);
+    expect(res.phase).toBe("playing");
+  });
+
+  test("a name can't be claimed while its owner is only briefly disconnected", async () => {
+    const { host, player, code } = await createAndJoin();
+    await startGame(host, player);
+    player.disconnect();
+    await sleep(100);
+    const res = await emit(makeClient(), "join_game", { playerName: "Alice", code });
+    expect(res.success).toBe(false);
+    expect(res.error).toMatch(/taken/i);
   });
 
   test("cannot join a non-existent game", async () => {
@@ -251,14 +280,14 @@ describe("Game flow", () => {
   });
 
   test("letters don't repeat within a game", async () => {
-    const { host, player } = await createAndJoin("Host", "Alice", { totalRounds: 3 });
+    const { host, player } = await createAndJoin("Host", "Alice", { totalRounds: 5 });
     const letters = [await startGame(host, player)];
-    for (let i = 0; i < 2; i++) {
+    for (let i = 0; i < 4; i++) {
       await forceEndRound(host, player);
       await finalise(host);
       letters.push(await nextRound(host, player));
     }
-    expect(new Set(letters).size).toBe(3);
+    expect(new Set(letters).size).toBe(5);
   }, 20000);
 
   test("malformed payloads are rejected without crashing the round", async () => {
@@ -303,6 +332,28 @@ describe("Duplicate detection", () => {
     expect(hostGrid[1].entries.every(e => e.flagReason === "duplicate")).toBe(true);
   });
 
+  test("plurals and spacing count as duplicates", async () => {
+    const { host, player } = await createAndJoin();
+    const L = await startGame(host, player);
+
+    await emit(host,   "save_answers", { answers: { 0: `${L}atermelons`, 1: `${L}herries`, 2: `${L}uses` } });
+    await emit(player, "save_answers", { answers: { 0: `${L}ater melon`,  1: `${L}herry`,   2: `${L}us`   } });
+
+    const [hostGrid] = await Promise.all([waitForGrid(host), forceEndRound(host, player)]);
+    hostGrid.forEach(cat => expect(cat.entries.map(e => e.flagReason)).toEqual(["duplicate", "duplicate"]));
+  });
+
+  test("similar but different answers aren't duplicates", async () => {
+    const { host, player } = await createAndJoin();
+    const L = await startGame(host, player);
+
+    await emit(host,   "save_answers", { answers: { 0: `${L}lass`, 1: `${L}orsex` } });
+    await emit(player, "save_answers", { answers: { 0: `${L}las`,  1: `${L}orse`  } });
+
+    const [hostGrid] = await Promise.all([waitForGrid(host), forceEndRound(host, player)]);
+    hostGrid.slice(0, 2).forEach(cat => expect(cat.entries.some(e => e.flagged)).toBe(false));
+  });
+
   test("answers that don't start with the round letter are flagged", async () => {
     const { host, player } = await createAndJoin();
     const L = await startGame(host, player);
@@ -315,10 +366,10 @@ describe("Duplicate detection", () => {
     const hostEntry = ci => hostGrid[ci].entries.find(e => e.playerName === "Host");
     expect(hostEntry(0).flagReason).toBe("wrong letter");
     expect(hostEntry(1).flagged).toBe(false); // leading "The" is skipped
-    expect(hostEntry(2).flagged).toBe(false); // a single letter still starts with it
+    expect(hostEntry(2).flagReason).toBe("too short"); // one-letter answers don't count
 
     const result = await finalise(host);
-    expect(result.scoreboard.find(p => p.name === "Host").score).toBe(2);
+    expect(result.scoreboard.find(p => p.name === "Host").score).toBe(1);
   });
 
   test("unique answers are not flagged", async () => {
@@ -419,6 +470,49 @@ describe("Voting", () => {
     expect(entry.voteNo).toBe(0);
   });
 
+  test("host can reset the votes on a voted-out answer", async () => {
+    const host    = makeClient();
+    const player1 = makeClient();
+    const player2 = makeClient();
+    const { code } = await emit(host, "create_game", { playerName: "Host", gameDuration: 120, questionCount: 3, totalRounds: 1 });
+    await emit(player1, "join_game", { playerName: "Alice", code });
+    await emit(player2, "join_game", { playerName: "Bob",   code });
+    const L = await startGame(host, player1, player2);
+    await emit(player1, "save_answers", { answers: { 0: w(L, "lbatrox") } });
+
+    const [grid] = await Promise.all([waitForGrid(host), forceEndRound(host, player1, player2)]);
+    const aliceId = grid[0].entries.find(e => e.playerName === "Alice").playerId;
+    const hostId  = grid[0].entries.find(e => e.playerName === "Host").playerId;
+    await emit(host,    "vote", { categoryIndex: 0, targetPlayerId: aliceId, voteType: "no" });
+    await emit(player2, "vote", { categoryIndex: 0, targetPlayerId: aliceId, voteType: "no" });
+
+    // Only the host, and not on their own answer
+    expect((await emit(player2, "reset_votes", { categoryIndex: 0, targetPlayerId: aliceId })).success).toBe(false);
+    expect((await emit(host, "reset_votes", { categoryIndex: 0, targetPlayerId: hostId })).success).toBe(false);
+
+    const updated = waitFor(player1, "vote_update");
+    expect((await emit(host, "reset_votes", { categoryIndex: 0, targetPlayerId: aliceId })).success).toBe(true);
+    const entry = (await updated)[0].entries.find(e => e.playerName === "Alice");
+    expect(entry.flagged).toBe(false);
+    expect(entry.voteNo).toBe(0);
+  });
+
+  test("round summary says why an answer scored nothing", async () => {
+    const { host, player } = await createAndJoin();
+    const L = await startGame(host, player);
+    await emit(host,   "save_answers", { answers: { 0: w(L, "ardvarx") } });
+    await emit(player, "save_answers", { answers: { 0: w(L, "ardvarx"), 1: w(L, "lbatrox") } });
+
+    const [grid] = await Promise.all([waitForGrid(host), forceEndRound(host, player)]);
+    const aliceId = grid[1].entries.find(e => e.playerName === "Alice").playerId;
+    await emit(host, "vote", { categoryIndex: 1, targetPlayerId: aliceId, voteType: "no" });
+
+    const aliceResult = waitFor(player, "phase_change");
+    await emit(host, "finalise_scores", {});
+    const { myAnswers } = await aliceResult;
+    expect(myAnswers.map(a => a.reason)).toEqual(["duplicate", "voted out", "empty"]);
+  });
+
   test("votes can't rescue auto-flagged answers", async () => {
     const { host, player } = await createAndJoin();
     await startGame(host, player);
@@ -459,7 +553,7 @@ describe("Voting", () => {
     const hostPlayerId = grid[0].entries.find(e => e.playerName === "Host").playerId;
 
     player2.disconnect();
-    await new Promise(r => setTimeout(r, 200));
+    await sleep(GRACE + 200);
 
     // Only Alice is left to vote on Host's answer, so her no is a majority
     const updated = waitFor(host, "vote_update");
@@ -590,16 +684,43 @@ describe("Rejoin", () => {
     expect(res.myAnswers[0].valid).toBe(true);
   }, 20000);
 
-  test("rejoined player is marked connected again", async () => {
+  test("a brief disconnect (e.g. switching apps) isn't announced", async () => {
+    const host   = makeClient();
+    const player = makeClient();
+    const { code } = await emit(host, "create_game", { playerName: "Host", gameDuration: 120, questionCount: 3, totalRounds: 1 });
+    const { token } = await emit(player, "join_game", { playerName: "Alice", code });
+    await startGame(host, player);
+    const announcements = [];
+    host.on("player_left", e => announcements.push(e));
+
+    player.disconnect();
+    await sleep(100);
+    expect((await emit(makeClient(), "join_game", { code, token })).success).toBe(true);
+    await sleep(GRACE + 200);
+    expect(announcements).toEqual([]);
+  });
+
+  test("a player gone past the grace period is announced, marked away, and welcomed back", async () => {
     const { host, player, code } = await createAndJoin();
     await startGame(host, player);
+    const left = waitFor(host, "player_left");
     player.disconnect();
-    await new Promise(r => setTimeout(r, 200));
+    expect(await left).toEqual({ playerName: "Alice", reason: "disconnected" });
+    expect(Object.values(rooms[code].players).find(p => p.name === "Alice").away).toBe(true);
 
+    const back = waitFor(host, "player_back");
     const update = waitFor(host, "room_update");
     await emit(makeClient(), "join_game", { playerName: "Alice", code });
-    const alice = (await update).players.find(p => p.name === "Alice");
-    expect(alice.connected).toBe(true);
+    expect(await back).toEqual({ playerName: "Alice" });
+    expect((await update).players.find(p => p.name === "Alice").away).toBe(false);
+  });
+
+  test("leaving on purpose is announced straight away", async () => {
+    const { host, player } = await createAndJoin();
+    await startGame(host, player);
+    const left = waitFor(host, "player_left", 200);
+    await emit(player, "leave_game", {});
+    expect(await left).toEqual({ playerName: "Alice", reason: "left" });
   });
 
   test("token lets a new connection take over a seat whose old socket is still open", async () => {

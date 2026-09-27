@@ -168,6 +168,15 @@ describe("renderMyAnswers content checks", () => {
     expect(html).toContain("Archer");       // the duplicate
   });
 
+  test("invalid answers say why when the server gives a reason", () => {
+    const renderMyAnswers = getRenderMyAnswers([
+      { category: "A TV show", answer: "Archer", valid: false, reason: "voted out" },
+    ]);
+    const html = renderMyAnswers();
+    expect(html).toContain("✗ voted out");
+    expect(html).not.toContain("no point");
+  });
+
   test("empty answers show dash not blank", () => {
     const renderMyAnswers = getRenderMyAnswers(sampleAnswers);
     const html = renderMyAnswers();
