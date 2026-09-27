@@ -13,6 +13,8 @@ A real-time multiplayer Scattergories-style game. No accounts, no installs — s
 5. After the timer, vote on each other's answers — empty, one-letter, wrong-letter and duplicate answers are auto-flagged
 6. Scores accumulate across rounds, highest total wins
 
+You can only be in one game at a time — press **Leave** (bottom bar) before creating or joining another.
+
 Dropped connection, switched apps on your phone or refreshed the page? You're put straight back into your seat. Other players are only told you've gone if you're away for more than 30 seconds. You can also rejoin from another device by entering the same name and code once that 30 seconds has passed.
 
 **Double points** — if your answer starts *and* ends with the round letter (e.g. letter A → *Anaconda*) you score 2 points instead of 1.
@@ -43,11 +45,12 @@ scattergories/
 │   └── index.html          ← entire frontend
 ├── src/
 │   ├── server.js           ← game logic + socket events
-│   └── db.js               ← Supabase helper
+│   └── db.js               ← Supabase helper (saves each finalised round)
 ├── supabase/
-│   └── schema.sql          ← run once to set up DB tables
+│   └── schema.sql          ← creates/upgrades DB tables (safe to re-run)
 ├── tests/
 │   ├── game.test.js        ← integration tests (socket clients)
+│   ├── db.test.js          ← database saving (fake Supabase client)
 │   └── ui.test.js          ← snapshot tests (rendering functions)
 ├── .env.example
 ├── package.json
@@ -84,6 +87,19 @@ Set these in `.env` locally and in Render → Environment in production.
 
 To get them: create a free project at [supabase.com](https://supabase.com), then run `supabase/schema.sql` in the SQL editor.
 
+**Upgrading an existing database:** re-run `supabase/schema.sql` *before* deploying a new version. It only adds what's missing and keeps existing rows. If the tables are out of date, saves fail and get logged, but games keep working.
+
+### What gets saved
+
+| Table | One row per |
+|---|---|
+| `game_sessions` | game (`ended_at` is set when the last round is finalised; empty = abandoned) |
+| `game_players` | player in a game (`final_score` is the running total, updated every round) |
+| `game_rounds` | finalised round (`round_number`, `letter`, `categories`) |
+| `game_answers` | player × category × round (`valid`, `points`, `invalid_reason`) |
+
+Rows saved before this layout have `letter`/`categories` on `game_sessions`, one session per round, and no `game_rounds` rows.
+
 ---
 
 ## Running Tests
@@ -92,7 +108,7 @@ To get them: create a free project at [supabase.com](https://supabase.com), then
 npm test
 ```
 
-59 tests across two suites. Runs in a few seconds. No real timers, no network calls — Supabase is mocked.
+70 tests across three suites. Runs in a few seconds. No real timers, no network calls — Supabase is mocked.
 
 ```bash
 npm test -- --updateSnapshot   # regenerate UI snapshots after frontend changes

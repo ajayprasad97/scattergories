@@ -6,8 +6,9 @@
  */
 
 jest.mock("../src/db", () => ({
-  saveGameSession: jest.fn().mockResolvedValue("mock-session-id")
+  createGameRecorder: jest.fn(() => ({ saveRound: jest.fn().mockResolvedValue("mock-round-id") }))
 }));
+const { createGameRecorder } = require("../src/db");
 
 // Short grace period so "player went away" logic can be tested quickly
 process.env.AWAY_GRACE_MS = "300";
@@ -171,6 +172,35 @@ describe("Lobby", () => {
     const host = makeClient();
     const res = await emit(host, "create_game", { playerName: "   ", gameDuration: 120, questionCount: 3, totalRounds: 1 });
     expect(res.success).toBe(false);
+  });
+
+  test("can't create or join another game while still in one", async () => {
+    const { host, player, code } = await createAndJoin();
+    await startGame(host, player);
+    const other = makeClient();
+    const { code: otherCode } = await emit(other, "create_game", { playerName: "Zed", gameDuration: 120, questionCount: 3, totalRounds: 1 });
+
+    const created = await emit(player, "create_game", { playerName: "Alice", gameDuration: 120, questionCount: 3, totalRounds: 1 });
+    expect(created.success).toBe(false);
+    expect(created.error).toMatch(new RegExp(`already in game ${code}`, "i"));
+    const joined = await emit(player, "join_game", { playerName: "Alice", code: otherCode });
+    expect(joined.success).toBe(false);
+
+    // Still seated and playing in the original game
+    const alice = Object.values(rooms[code].players).find(p => p.name === "Alice");
+    expect(alice.away).toBe(false);
+    expect((await emit(player, "save_answers", { answers: { 0: "x" } })).success).toBe(true);
+
+    // After leaving, it's allowed
+    await emit(player, "leave_game", {});
+    expect((await emit(player, "join_game", { playerName: "Alice", code: otherCode })).success).toBe(true);
+  });
+
+  test("a repeated join from the same connection is a harmless rejoin", async () => {
+    const { player, code } = await createAndJoin();
+    const again = await emit(player, "join_game", { playerName: "Alice", code });
+    expect(again.success).toBe(true);
+    expect(Object.keys(rooms[code].players)).toHaveLength(2);
   });
 
   test("room is deleted when everyone leaves the lobby", async () => {
@@ -640,6 +670,41 @@ describe("Scoring", () => {
     expect(r2.phase).toBe("scores");
     expect(r2.scoreboard.find(p => p.name === "Host").score).toBe(3);
     expect(r2.scoreboard.find(p => p.name === "Host").roundScore).toBe(1);
+  }, 20000);
+});
+
+describe("Saving to the database", () => {
+  test("each finalised round is saved with its number, letter and answers, under one recorder per game", async () => {
+    createGameRecorder.mockClear();
+    const { host, player } = await createAndJoin("Host", "Alice", { questionCount: 2, totalRounds: 2 });
+
+    const L1 = await startGame(host, player);
+    expect(createGameRecorder).toHaveBeenCalledTimes(1);
+    const recorder = createGameRecorder.mock.results[0].value;
+    await emit(host,   "save_answers", { answers: { 0: w(L1, "ntelopy") } });
+    await emit(player, "save_answers", { answers: { 0: w(L1, "ntelopy"), 1: w(L1, "lbatrox") } });
+    await forceEndRound(host, player);
+    await finalise(host);
+
+    const L2 = await nextRound(host, player);
+    await forceEndRound(host, player);
+    await finalise(host);
+
+    expect(recorder.saveRound).toHaveBeenCalledTimes(2);
+    const [[r1], [r2]] = recorder.saveRound.mock.calls;
+    expect(r1).toMatchObject({ roundNumber: 1, letter: L1, isLastRound: false, settings: { totalRounds: 2 } });
+    expect(r2).toMatchObject({ roundNumber: 2, letter: L2, isLastRound: true });
+    const alice1 = r1.players.find(p => p.name === "Alice");
+    expect(alice1.score).toBe(1);
+    expect(alice1.answers.map(a => a.reason)).toEqual(["duplicate", null]);
+    // Round 1's snapshot wasn't changed by round 2 starting
+    expect(r1.categories).toHaveLength(2);
+    expect(r1.categories).not.toEqual(r2.categories);
+
+    // Playing again starts a fresh game record
+    await emit(host, "play_again", {});
+    await startGame(host, player);
+    expect(createGameRecorder).toHaveBeenCalledTimes(2);
   }, 20000);
 });
 

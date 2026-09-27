@@ -4,7 +4,7 @@ const http = require("http");
 const { Server } = require("socket.io");
 const { v4: uuidv4 } = require("uuid");
 const path = require("path");
-const { saveGameSession } = require("./db");
+const { createGameRecorder } = require("./db");
 
 const app = express();
 const server = http.createServer(app);
@@ -508,6 +508,15 @@ function handler(fn) {
   };
 }
 
+// A socket already seated in a game has to leave it first (the Leave button)
+// rather than being silently pulled out of it — e.g. clicking Create Game
+// while the page is still quietly rejoining the game from last time
+function alreadySeated(socket, exceptPlayerId = null) {
+  const { room, player } = currentPlayer(socket);
+  if (!room || player.id === exceptPlayerId) return null;
+  return { success: false, error: `You're already in game ${room.code}. Leave it first.`, code: room.code };
+}
+
 // For events only the host may send in a given phase
 function hostAction(socket, phase) {
   const { room, player } = currentPlayer(socket);
@@ -522,7 +531,8 @@ io.on("connection", (socket) => {
   socket.on("create_game", handler(({ playerName, gameDuration, questionCount, totalRounds }, ack) => {
     const name = cleanName(playerName);
     if (!name) return ack({ success: false, error: "Enter your name." });
-    detachSocket(socket, true);
+    const seated = alreadySeated(socket);
+    if (seated) return ack(seated);
 
     const code = generateCode();
     const settings = {
@@ -540,7 +550,8 @@ io.on("connection", (socket) => {
       settings,
       currentRound: 0,
       usedLetters: new Set(), usedCategories: new Set(),
-      votes: {}, autoFlags: {}
+      votes: {}, autoFlags: {},
+      recorder: null
     };
     attachSocket(socket, room, player);
     ack({ success: true, code, playerId: player.id, token: player.token, isHost: true, roomState: getRoomState(room) });
@@ -561,23 +572,20 @@ io.on("connection", (socket) => {
       const sameName = players.find(p => p.name.toLowerCase() === name.toLowerCase());
       // Without the token, a seat can only be claimed by name once its owner has been away
       // past the grace period — e.g. rejoining from another device
-      if (sameName && !sameName.away) {
+      // (a repeat join from the socket that already holds the seat is just a rejoin)
+      if (sameName && !sameName.away && sameName.socketId !== socket.id) {
         return ack({ success: false, error: "That name is already taken in this game. If it's you, try again in a minute." });
       }
       player = sameName;
     }
-    if (player) {
-      if (socket.data.playerId !== player.id) detachSocket(socket, true);
-      return rejoin(socket, room, player, ack);
-    }
+    const seated = alreadySeated(socket, player?.id);
+    if (seated) return ack(seated);
+    if (player) return rejoin(socket, room, player, ack);
 
     // ── New join: only allowed in lobby ──
     if (room.phase !== "lobby") return ack({ success: false, error: "Game already in progress." });
     if (players.length >= MAX_PLAYERS) return ack({ success: false, error: "Room is full." });
 
-    detachSocket(socket, true);
-    // Leaving a previous seat could have emptied and deleted this very room
-    if (getRoom(room.code) !== room) return ack({ success: false, error: "Game not found. Check your code." });
     player = newPlayer(name);
     room.players[player.id] = player;
     attachSocket(socket, room, player);
@@ -604,6 +612,7 @@ io.on("connection", (socket) => {
     room.currentRound = 0;
     room.usedLetters = new Set();
     room.usedCategories = new Set();
+    room.recorder = createGameRecorder(); // one DB game per start, however many rounds
     startNextRound(room);
     ack({ success: true });
   }));
@@ -680,10 +689,12 @@ io.on("connection", (socket) => {
     ack({ success: true });
 
     // Save to Supabase asynchronously — snapshot now so a quick next round can't change what gets saved
-    saveGameSession({
+    room.recorder.saveRound({
       code: room.code,
-      letter: room.letter,
       settings: { ...room.settings },
+      roundNumber: room.currentRound,
+      isLastRound,
+      letter: room.letter,
       categories: [...room.categories],
       players: Object.values(room.players).map(p => ({ name: p.name, score: p.score, answers: p.roundSummary }))
     });

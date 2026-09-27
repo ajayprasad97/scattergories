@@ -328,13 +328,17 @@
   }
 
   // ── Actions ──
+  let requestPending = false; // ignore double-taps on Create / Join while one is in flight
   function createGame() {
+    if (requestPending) return;
     myName = document.getElementById("host-name").value.trim();
     if (!myName) return toast("Enter your name first.");
     const gameDuration  = parseInt(document.getElementById("host-timer").value);
     const questionCount = parseInt(document.getElementById("host-questions").value);
     const totalRounds   = parseInt(document.getElementById("host-rounds").value);
+    requestPending = true;
     socket.emit("create_game", { playerName: myName, gameDuration, questionCount, totalRounds }, (res) => {
+      requestPending = false;
       if (!res.success) return toast(res.error || "Error creating game.");
       isHost = true;
       saveSession(res);
@@ -344,11 +348,14 @@
   }
 
   function joinGame() {
+    if (requestPending) return;
     myName = document.getElementById("join-name").value.trim();
     const code = document.getElementById("join-code").value.trim().toUpperCase();
     if (!myName) return toast("Enter your name.");
     if (!code)   return toast("Enter a game code.");
+    requestPending = true;
     socket.emit("join_game", { playerName: myName, code }, (res) => {
+      requestPending = false;
       if (!res.success) return toast(res.error || "Failed to join.");
       handleJoinResponse(res);
     });
